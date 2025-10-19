@@ -110,6 +110,11 @@ impl Tokenizer {
         self.transition_from_start()
     }
 
+    /// Get the input string being tokenized
+    pub fn get_input_string(&self) -> &str {
+        &self.input_string
+    }
+
     /// Unescape HTML entities in the input string
     fn unescape_string(s: &str) -> String {
         s.replace("&lt;", "<").replace("&gt;", ">")

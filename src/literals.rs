@@ -29,6 +29,8 @@ pub enum ForthicValue {
     Date(NaiveDate),
     Time(NaiveTime),
     DateTime(chrono::DateTime<Tz>),
+    /// Marker for array construction (used internally by interpreter)
+    StartArrayMarker,
 }
 
 impl ForthicValue {
@@ -72,8 +74,9 @@ impl ForthicValue {
 
 /// Literal handler function type
 ///
-/// Takes a string and returns a parsed ForthicValue or None if can't parse
-pub type LiteralHandler = fn(&str) -> Option<ForthicValue>;
+/// Takes a string and returns a parsed ForthicValue or None if can't parse.
+/// Uses Box<dyn Fn> to support both regular functions and closures (e.g., from factory functions).
+pub type LiteralHandler = Box<dyn Fn(&str) -> Option<ForthicValue>>;
 
 /// Parse boolean literals: TRUE, FALSE
 ///
@@ -214,7 +217,8 @@ pub fn to_time(s: &str) -> Option<ForthicValue> {
 /// assert!(parser("2023-12-25").is_some());
 /// assert!(parser("YYYY-12-25").is_some()); // Uses current year
 /// ```
-pub fn to_literal_date(timezone: &str) -> impl Fn(&str) -> Option<ForthicValue> + '_ {
+pub fn to_literal_date(timezone: &str) -> impl Fn(&str) -> Option<ForthicValue> {
+    let timezone = timezone.to_string(); // Own the timezone
     move |s: &str| {
         // Regex: YYYY-MM-DD or wildcards
         let re = Regex::new(r"^(\d{4}|YYYY)-(\d{2}|MM)-(\d{2}|DD)$").ok()?;
@@ -264,7 +268,8 @@ pub fn to_literal_date(timezone: &str) -> impl Fn(&str) -> Option<ForthicValue> 
 /// assert!(parser("2023-12-25T14:30:00Z").is_some());
 /// assert!(parser("2023-12-25T14:30:00-08:00").is_some());
 /// ```
-pub fn to_zoned_datetime(timezone: &str) -> impl Fn(&str) -> Option<ForthicValue> + '_ {
+pub fn to_zoned_datetime(timezone: &str) -> impl Fn(&str) -> Option<ForthicValue> {
+    let timezone = timezone.to_string(); // Own the timezone
     move |s: &str| {
         // Must have 'T' separator for datetime
         if !s.contains('T') {
