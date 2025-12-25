@@ -7,6 +7,7 @@ pub mod errors;
 pub mod interpreter;
 pub mod literals;
 pub mod module;
+pub mod modules;
 pub mod tokenizer;
 pub mod utils;
 pub mod word_options;
@@ -18,6 +19,9 @@ pub use literals::ForthicValue;
 pub use module::{Module, Variable, Word};
 pub use tokenizer::{Token, TokenType, Tokenizer};
 pub use word_options::WordOptions;
+
+// Re-export modules
+pub use modules::standard::*;
 
 /// Prelude module for convenient imports
 pub mod prelude {

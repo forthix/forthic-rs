@@ -11,6 +11,7 @@
 //! - Date: 2020-06-05, YYYY-MM-DD (with wildcards)
 //! - ZonedDateTime: ISO 8601 timestamps with timezone support
 
+use crate::word_options::WordOptions;
 use chrono::{Datelike, NaiveDate, NaiveTime, TimeZone, Utc};
 use chrono_tz::Tz;
 use regex::Regex;
@@ -29,6 +30,7 @@ pub enum ForthicValue {
     Date(NaiveDate),
     Time(NaiveTime),
     DateTime(chrono::DateTime<Tz>),
+    WordOptions(WordOptions),
     /// Marker for array construction (used internally by interpreter)
     StartArrayMarker,
 }
