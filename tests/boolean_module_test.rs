@@ -1,7 +1,6 @@
 use forthic::literals::ForthicValue;
 use forthic::modules::standard::BooleanModule;
 use forthic::module::{InterpreterContext, Module};
-use std::sync::{Arc, Mutex};
 
 // Mock interpreter context for testing
 struct MockContext {

@@ -176,7 +176,7 @@ impl RecordModule {
 
         // Navigate to the correct nested level
         if let ForthicValue::String(key) = &fields[0] {
-            let mut current = record
+            let current = record
                 .entry(key.clone())
                 .or_insert_with(|| ForthicValue::Record(HashMap::new()));
 

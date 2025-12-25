@@ -43,6 +43,7 @@ impl Token {
 /// Tracks changes to the input string for streaming support
 #[derive(Debug, Clone)]
 struct StringDelta {
+    #[allow(dead_code)]
     start: usize,
     end: usize,
 }

@@ -13,7 +13,6 @@ use crate::errors::ForthicError;
 use crate::literals::ForthicValue;
 use crate::module::{InterpreterContext, Module, ModuleWord};
 use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, NaiveTime, TimeZone, Utc};
-use chrono_tz::Tz;
 use std::sync::Arc;
 
 /// DateTimeModule provides date and time operations
