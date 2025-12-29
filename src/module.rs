@@ -4,6 +4,7 @@
 //! - **Variable**: Named mutable value containers
 //! - **Word**: Executable units (trait and implementations)
 //! - **Module**: Containers for words, variables, and imported modules
+//! - **WordErrorHandler**: Per-word error handling
 //!
 //! # Word Types
 //!
@@ -13,6 +14,7 @@
 //! - **ModuleMemoBangWord**: Forces refresh of a memoized word
 //! - **ModuleMemoBangAtWord**: Refreshes and returns memoized value
 //! - **ExecuteWord**: Wrapper that executes another word (for prefixed imports)
+//! - **ModuleWord**: Word with integrated per-word error handling support
 //!
 //! # Module Features
 //!
@@ -20,11 +22,12 @@
 //! - Module importing with optional prefixes
 //! - Exportable word lists for controlled visibility
 //! - Module duplication for isolated execution contexts
+//! - Per-word error handlers with automatic retry logic
 
 use crate::errors::{CodeLocation, ForthicError};
 use crate::literals::ForthicValue;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 // Forward declaration - Interpreter will be defined in interpreter.rs
 // We use a trait to avoid circular dependencies
@@ -38,6 +41,32 @@ pub trait InterpreterContext {
     fn module_stack_push(&mut self, module: Module);
     fn module_stack_pop(&mut self) -> Result<Module, ForthicError>;
 }
+
+/// Word error handler trait - handles errors during word execution
+///
+/// Error handlers can suppress errors by returning Ok, or propagate them by returning Err.
+/// Multiple handlers can be attached to a single word and are tried in order.
+pub trait WordErrorHandler: Send + Sync {
+    /// Handle an error that occurred during word execution
+    ///
+    /// # Arguments
+    /// * `error` - The error that occurred
+    /// * `word_name` - Name of the word that generated the error
+    /// * `context` - Interpreter context for stack manipulation
+    ///
+    /// # Returns
+    /// * `Ok(())` - Handler successfully handled the error (error is suppressed)
+    /// * `Err(error)` - Handler did not handle the error (try next handler or propagate)
+    fn handle(
+        &self,
+        error: &ForthicError,
+        word_name: &str,
+        context: &mut dyn InterpreterContext,
+    ) -> Result<(), ForthicError>;
+}
+
+// Type alias for word executor functions
+pub type WordExecutor = fn(&mut dyn InterpreterContext) -> Result<(), ForthicError>;
 
 /// Variable - Named mutable value container
 ///
@@ -374,6 +403,106 @@ impl Word for ExecuteWord {
 
     fn execute(&self, context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
         self.target_word.execute(context)
+    }
+}
+
+/// ModuleWord - Word that executes a handler with error handling support
+///
+/// Used to create module words with integrated per-word error handling.
+/// Wraps execution in error handling logic, trying handlers in order if an error occurs.
+/// IntentionalStop errors bypass error handlers (used for flow control).
+pub struct ModuleWord {
+    name: String,
+    handler: WordExecutor,
+    error_handlers: Mutex<Vec<Arc<dyn WordErrorHandler>>>,
+    location: Option<CodeLocation>,
+}
+
+impl ModuleWord {
+    /// Create a new ModuleWord with a given name and handler function
+    pub fn new(name: String, handler: WordExecutor) -> Self {
+        Self {
+            name,
+            handler,
+            error_handlers: Mutex::new(Vec::new()),
+            location: None,
+        }
+    }
+
+    /// Add an error handler to this word
+    pub fn add_error_handler(&self, handler: Arc<dyn WordErrorHandler>) {
+        self.error_handlers.lock().unwrap().push(handler);
+    }
+
+    /// Remove an error handler (requires PartialEq, so we compare Arc pointers)
+    pub fn remove_error_handler(&self, handler: &Arc<dyn WordErrorHandler>) {
+        let mut handlers = self.error_handlers.lock().unwrap();
+        if let Some(pos) = handlers.iter().position(|h| Arc::ptr_eq(h, handler)) {
+            handlers.remove(pos);
+        }
+    }
+
+    /// Clear all error handlers
+    pub fn clear_error_handlers(&self) {
+        self.error_handlers.lock().unwrap().clear();
+    }
+
+    /// Get a copy of all error handlers (for testing)
+    pub fn get_error_handlers(&self) -> Vec<Arc<dyn WordErrorHandler>> {
+        self.error_handlers.lock().unwrap().clone()
+    }
+
+    /// Try error handlers in order until one succeeds
+    ///
+    /// Returns true if any handler successfully handled the error
+    fn try_error_handlers(
+        &self,
+        error: &ForthicError,
+        context: &mut dyn InterpreterContext,
+    ) -> bool {
+        let handlers = self.error_handlers.lock().unwrap().clone();
+        for handler in handlers {
+            if handler.handle(error, &self.name, context).is_ok() {
+                return true; // Handler succeeded
+            }
+            // Handler failed, try next one
+        }
+        false // No handler succeeded
+    }
+}
+
+impl Word for ModuleWord {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn location(&self) -> Option<&CodeLocation> {
+        self.location.as_ref()
+    }
+
+    fn set_location(&mut self, location: CodeLocation) {
+        self.location = Some(location);
+    }
+
+    fn execute(&self, context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        match (self.handler)(context) {
+            Ok(()) => Ok(()),
+            Err(ForthicError::IntentionalStop { .. }) => {
+                // Never handle intentional flow control errors
+                Err(ForthicError::IntentionalStop {
+                    message: "Intentional stop".to_string(),
+                })
+            }
+            Err(e) => {
+                // Try error handlers
+                let handled = self.try_error_handlers(&e, context);
+                if handled {
+                    Ok(()) // Error was handled, execution continues
+                } else {
+                    Err(e) // Re-raise if not handled
+                }
+            }
+        }
     }
 }
 

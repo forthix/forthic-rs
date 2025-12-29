@@ -487,7 +487,7 @@ impl Interpreter {
             let h_ptr = &**h as *const dyn Fn(&str) -> Option<ForthicValue>;
             std::ptr::eq(h_ptr, handler_ptr)
         }) {
-            self.literal_handlers.remove(index);
+            let _ = self.literal_handlers.remove(index);
         }
     }
 
@@ -1616,7 +1616,7 @@ mod tests {
 
     #[test]
     fn test_get_top_input_string() {
-        let mut interp = Interpreter::new("UTC");
+        let interp = Interpreter::new("UTC");
 
         // Empty initially
         assert_eq!(interp.get_top_input_string(), "");

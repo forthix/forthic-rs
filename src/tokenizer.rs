@@ -43,6 +43,7 @@ impl Token {
 /// Tracks changes to the input string for streaming support
 #[derive(Debug, Clone)]
 struct StringDelta {
+    #[allow(dead_code)]
     start: usize,
     end: usize,
 }
@@ -529,11 +530,27 @@ impl Tokenizer {
             if self.is_whitespace(ch) {
                 break;
             }
-            if [';', '[', ']', '{', '}', '#'].contains(&ch) {
+
+            // Special case: if token contains 'T' and we encounter '[',
+            // this is likely a zoned datetime with IANA timezone bracket notation.
+            // Include the bracketed timezone as part of the token.
+            if ch == '[' && self.token_string.contains('T') {
+                self.token_string.push(ch);
+                // Continue gathering until closing bracket
+                while self.input_pos < self.input_string.len() {
+                    let ch2 = self.get_char_at(self.input_pos).unwrap();
+                    self.advance_position(1)?;
+                    self.token_string.push(ch2);
+                    if ch2 == ']' {
+                        break;
+                    }
+                }
+            } else if [';', '[', ']', '{', '}', '#'].contains(&ch) {
                 self.advance_position(-1)?;
                 break;
+            } else {
+                self.token_string.push(ch);
             }
-            self.token_string.push(ch);
         }
         Ok(Token::new(
             TokenType::Word,

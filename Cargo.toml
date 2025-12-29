@@ -27,6 +27,9 @@ serde_json = "1.0"
 # Regex
 regex = "1.0"
 
+# URL encoding
+urlencoding = "2.1"
+
 # CLI (optional, for bin)
 clap = { version = "4", features = ["derive"], optional = true }
 rustyline = { version = "12", optional = true }

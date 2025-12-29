@@ -11,6 +11,7 @@
 //! - Date: 2020-06-05, YYYY-MM-DD (with wildcards)
 //! - ZonedDateTime: ISO 8601 timestamps with timezone support
 
+use crate::word_options::WordOptions;
 use chrono::{Datelike, NaiveDate, NaiveTime, TimeZone, Utc};
 use chrono_tz::Tz;
 use regex::Regex;
@@ -29,6 +30,7 @@ pub enum ForthicValue {
     Date(NaiveDate),
     Time(NaiveTime),
     DateTime(chrono::DateTime<Tz>),
+    WordOptions(WordOptions),
     /// Marker for array construction (used internally by interpreter)
     StartArrayMarker,
 }
@@ -250,10 +252,13 @@ pub fn to_literal_date(timezone: &str) -> impl Fn(&str) -> Option<ForthicValue> 
 
 /// Create a zoned datetime literal parser with timezone support
 ///
-/// Parses ISO 8601 datetime strings:
+/// Parses ISO 8601 datetime strings with IANA timezone bracket notation:
 /// - With UTC: 2025-05-24T10:15:00Z
 /// - With offset: 2025-05-24T10:15:00-05:00
 /// - Without timezone: 2025-05-24T10:15:00 (uses provided timezone)
+/// - IANA bracket notation: 2025-05-20T08:00:00[America/Los_Angeles]
+/// - Offset + IANA: 2025-05-20T08:00:00-07:00[America/Los_Angeles]
+/// - UTC + bracket: 2025-05-20T08:00:00Z[UTC]
 ///
 /// # Arguments
 ///
@@ -267,24 +272,63 @@ pub fn to_literal_date(timezone: &str) -> impl Fn(&str) -> Option<ForthicValue> 
 /// let parser = to_zoned_datetime("America/Los_Angeles");
 /// assert!(parser("2023-12-25T14:30:00Z").is_some());
 /// assert!(parser("2023-12-25T14:30:00-08:00").is_some());
+/// assert!(parser("2023-12-25T14:30:00[America/Los_Angeles]").is_some());
 /// ```
-pub fn to_zoned_datetime(timezone: &str) -> impl Fn(&str) -> Option<ForthicValue> {
-    let timezone = timezone.to_string(); // Own the timezone
+pub fn to_zoned_datetime(default_timezone: &str) -> impl Fn(&str) -> Option<ForthicValue> {
+    let default_timezone = default_timezone.to_string(); // Own the timezone
     move |s: &str| {
         // Must have 'T' separator for datetime
         if !s.contains('T') {
             return None;
         }
 
-        let tz: Tz = timezone.parse().ok()?;
+        // Extract IANA timezone from brackets if present
+        let bracket_re = Regex::new(r"\[([^\]]+)\]$").ok()?;
+        if let Some(captures) = bracket_re.captures(s) {
+            // Extract timezone name from brackets
+            let tz_name = captures.get(1)?.as_str();
 
-        // Handle explicit UTC (Z suffix)
-        if s.ends_with('Z') {
-            let dt = chrono::DateTime::parse_from_rfc3339(s).ok()?;
-            return Some(ForthicValue::DateTime(dt.with_timezone(&tz)));
+            // Validate timezone identifier
+            let tz: Tz = tz_name.parse().ok()?;
+
+            // Extract datetime string (before bracket)
+            let datetime_str = &s[0..captures.get(0)?.start()];
+
+            // Handle Z suffix - convert to +00:00 for parsing
+            let datetime_str = if datetime_str.ends_with('Z') {
+                format!("{}+00:00", &datetime_str[..datetime_str.len()-1])
+            } else {
+                datetime_str.to_string()
+            };
+
+            // Parse datetime (may have offset)
+            // Try with offset first
+            if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&datetime_str) {
+                // Convert to specified timezone
+                return Some(ForthicValue::DateTime(dt.with_timezone(&tz)));
+            }
+
+            // Try simple format without offset - parse in the target timezone
+            if let Ok(naive_dt) = chrono::NaiveDateTime::parse_from_str(&datetime_str, "%Y-%m-%dT%H:%M:%S") {
+                return tz.from_local_datetime(&naive_dt)
+                    .earliest()
+                    .map(ForthicValue::DateTime);
+            }
+
+            return None;
         }
 
-        // Handle explicit timezone offset (+05:00, -05:00)
+        // No brackets - handle as before
+        let tz: Tz = default_timezone.parse().ok()?;
+
+        // Handle explicit UTC (Z suffix) - preserve as UTC
+        if s.ends_with('Z') {
+            let dt = chrono::DateTime::parse_from_rfc3339(s).ok()?;
+            let utc_tz: Tz = "UTC".parse().ok()?;
+            return Some(ForthicValue::DateTime(dt.with_timezone(&utc_tz)));
+        }
+
+        // Handle explicit timezone offset (+05:00, -05:00) - convert to default timezone
         let offset_re = Regex::new(r"[+-]\d{2}:\d{2}$").ok()?;
         if offset_re.is_match(s) {
             let dt = chrono::DateTime::parse_from_rfc3339(s).ok()?;
