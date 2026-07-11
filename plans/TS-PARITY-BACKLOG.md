@@ -69,22 +69,22 @@ the spec for anything ported.
 
 ## Tier 4 — Missing features (port later; post-fix ts is the spec)
 
-12. **Word locations**: per-definition location tracking (ts #30 design:
+13. **Word locations**: per-definition location tracking (ts #30 design:
     `word_locations` vec parallel to `words` in DefinitionWord, thread
     `token.location` through `handle_word`) + the interpreter-error
     `with_location` work already listed in JSONRPC-PLAN follow-ups. Note the
     ts *race* (shared Word mutated at compile time) is uncompilable in rs
     (`&mut self` through `Arc` is refused) — only the feature is missing.
-13. **Missing stdlib words**: `MAP`, `SORT`, `FIRST`, `TAKE-LAST`,
+14. **Missing stdlib words**: `MAP`, `SORT`, `FIRST`, `TAKE-LAST`,
     `NUMBER?`, JQ path words, etc. Port to post-#31/#32/#33 contracts
     (e.g. MAP's fixed depth semantics), never pre-fix behavior. Never port
     `|REC@` (removed in #27 for injection).
-14. **Marked-string redirect + streaming** (ts #20 + #21 + #26 EOS
+15. **Marked-string redirect + streaming** (ts #20 + #21 + #26 EOS
     validation) — port as one coherent unit. First fix the dormant rs
     streaming tokenizer's ambiguity: it returns incomplete strings as
     normal String tokens (`tokenizer.rs:467-474, 509-515`), which will
     double-push if streaming is ever wired up as-is.
-15. **Recovery loop** (ts #26 fixed semantics: budget check before the
+16. **Recovery loop** (ts #26 fixed semantics: budget check before the
     recoverable region; never recover from TooManyAttempts).
     `ForthicError::TooManyAttempts` exists but is dead code today.
 
