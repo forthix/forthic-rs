@@ -49,6 +49,10 @@ jsonrpc = []
 name = "jsonrpc_serializer_test"
 required-features = ["jsonrpc"]
 
+[[test]]
+name = "jsonrpc_dispatch_test"
+required-features = ["jsonrpc"]
+
 # Binary will be added in Phase 7
 # [[bin]]
 # name = "forthic"

@@ -316,6 +316,41 @@ impl Interpreter {
         interp
     }
 
+    /// Create an interpreter with the full standard library imported
+    ///
+    /// Imports all standard modules (array, boolean, core, datetime, json,
+    /// math, record, string) without prefixes, so their exportable words are
+    /// directly available. The counterpart of forthic-ts's
+    /// `StandardInterpreter`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use forthic::interpreter::Interpreter;
+    ///
+    /// let mut interp = Interpreter::standard("UTC");
+    /// interp.run("5 3 +").unwrap();
+    /// ```
+    pub fn standard(timezone: &str) -> Self {
+        use crate::modules::standard::{
+            ArrayModule, BooleanModule, CoreModule, DateTimeModule, JSONModule, MathModule,
+            RecordModule, StringModule,
+        };
+
+        let mut interp = Self::new(timezone);
+        interp.import_modules(vec![
+            ArrayModule::new().module().clone(),
+            BooleanModule::new().module().clone(),
+            CoreModule::new().module().clone(),
+            DateTimeModule::new().module().clone(),
+            JSONModule::new().module().clone(),
+            MathModule::new().module().clone(),
+            RecordModule::new().module().clone(),
+            StringModule::new().module().clone(),
+        ]);
+        interp
+    }
+
     /// Get the timezone
     pub fn get_timezone(&self) -> &str {
         &self.timezone
@@ -836,8 +871,13 @@ impl Interpreter {
     /// Modules registered this way can be imported into other modules.
     pub fn register_module(&mut self, module: Module) {
         let name = module.get_name().to_string();
-        self.get_app_module_mut()
-            .register_module(name.clone(), name, module);
+        // Word lookup during execution searches module_stack, whose bottom
+        // entry is a clone of the app module taken at construction (or last
+        // reset). Register into both so the module is visible to running
+        // code now and survives reset().
+        self.app_module
+            .register_module(name.clone(), name.clone(), module.clone());
+        self.module_stack[0].register_module(name.clone(), name, module);
     }
 
     /// Find a registered module by name
@@ -882,8 +922,10 @@ impl Interpreter {
         // Register the module first
         self.register_module(module.clone());
 
-        // Import into app module
-        self.get_app_module_mut().import_module(prefix, &module);
+        // Import into both the app module and its live module_stack clone
+        // (see register_module)
+        self.app_module.import_module(prefix, &module);
+        self.module_stack[0].import_module(prefix, &module);
     }
 
     /// Import multiple modules without prefixes
@@ -1501,6 +1543,35 @@ mod tests {
 
         // Word should be accessible directly
         assert!(interp.get_app_module().find_word("PI").is_some());
+    }
+
+    #[test]
+    fn test_imported_word_is_runnable() {
+        // Regression: import_module used to mutate only app_module, while
+        // run() resolves words via module_stack, whose bottom entry is a
+        // clone taken at construction — imported words were unrunnable.
+        let mut interp = Interpreter::new("UTC");
+
+        let mut module = Module::new("math".to_string());
+        let word = Arc::new(PushValueWord::new("PI".to_string(), ForthicValue::Float(3.14)));
+        module.add_exportable_word(word);
+        interp.import_module(module, "");
+
+        interp.run("PI").unwrap();
+        assert_eq!(interp.get_stack().len(), 1);
+
+        // And the import survives a reset
+        interp.reset();
+        interp.run("PI").unwrap();
+        assert_eq!(interp.get_stack().len(), 1);
+    }
+
+    #[test]
+    fn test_standard_interpreter_runs_stdlib_words() {
+        let mut interp = Interpreter::standard("UTC");
+        interp.run("5 3 + 2 * 16 ==").unwrap();
+        let result = interp.get_stack_mut().pop().unwrap();
+        assert_eq!(result, ForthicValue::Bool(true));
     }
 
     #[test]
