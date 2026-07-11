@@ -27,6 +27,7 @@ const MAX_MATERIALIZED_ELEMENTS: i64 = 10_000_000;
 struct MapFlags {
     with_key: bool,
     depth: i64,
+    outcomes: bool,
 }
 
 /// ArrayModule provides array and collection operations
@@ -112,12 +113,17 @@ impl ArrayModule {
     /// - `depth` (int): descend nested containers this many levels, mapping
     ///   scalar leaves (post ts #31: leaves are mapped, never coerced to {})
     ///
-    /// Errors propagate (Forthic's default `?`-like behavior). For
-    /// error-tolerant mapping, compose with TRY (backlog item 20):
-    /// `[xs] "'F' TRY" MAP`. The ts push_error option is deliberately not
-    /// ported (flag-dependent arity, NULL/failure conflation, operand
-    /// stranding), and the ts `interps` option (parallel interpreters) is
-    /// not supported — the rs interpreter is deliberately synchronous.
+    /// - `outcomes`: each element maps to `{"ok": value}` /
+    ///   `{"error": {message, error_type}}` — per-element failures don't
+    ///   abort and can't disturb the stack (MAP snapshots BEFORE pushing the
+    ///   item, so a failed element consumes it; TRY composed inside MAP
+    ///   would transactionally restore the pushed item and strand it).
+    ///
+    /// Without outcomes, errors propagate (Forthic's default `?`-like
+    /// behavior). The ts push_error option was removed in both runtimes
+    /// (flag-dependent arity, NULL/failure conflation, operand stranding),
+    /// and the ts `interps` option (parallel interpreters) is not
+    /// supported — the rs interpreter is deliberately synchronous.
     fn word_map(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
         let options = Self::pop_options(context);
         let forthic_val = context.stack_pop()?;
@@ -144,6 +150,10 @@ impl ArrayModule {
                 .as_ref()
                 .and_then(|o| o.get_int("depth"))
                 .unwrap_or(0),
+            outcomes: options
+                .as_ref()
+                .and_then(|o| o.get_bool("outcomes"))
+                .unwrap_or(false),
         };
 
         let result = match items {
@@ -250,7 +260,12 @@ impl ArrayModule {
         Ok(accum)
     }
 
-    /// Map one leaf: push [key] value, run the forthic, pop the result
+    /// Map one leaf: push [key] value, run the forthic, pop the result.
+    /// In outcomes mode each leaf yields {"ok": ...}/{"error": ...} instead,
+    /// with the snapshot taken BEFORE the pushes — MAP owns them, so a
+    /// failed element consumes the item and cannot strand it (this is why
+    /// outcomes lives on MAP rather than being composed from TRY, whose
+    /// snapshot would include the pushed item and faithfully restore it).
     fn map_one(
         context: &mut dyn InterpreterContext,
         key: ForthicValue,
@@ -258,12 +273,42 @@ impl ArrayModule {
         forthic: &str,
         flags: &MapFlags,
     ) -> Result<ForthicValue, ForthicError> {
+        if !flags.outcomes {
+            if flags.with_key {
+                context.stack_push(key);
+            }
+            context.stack_push(value);
+            context.run(forthic)?;
+            return context.stack_pop();
+        }
+
+        let snapshot = context.stack_snapshot();
+        let module_depth = context.module_stack_depth();
         if flags.with_key {
             context.stack_push(key);
         }
         context.stack_push(value);
-        context.run(forthic)?;
-        context.stack_pop()
+        match context.run(forthic) {
+            Ok(()) => {
+                // Same payload rule as TRY, relative to the pre-push
+                // snapshot: a no-op code yields the pushed item itself
+                let after = context.stack_snapshot();
+                let unchanged = after == snapshot;
+                let payload = if !unchanged && !after.is_empty() {
+                    context.stack_pop()?
+                } else {
+                    ForthicValue::Null
+                };
+                Ok(super::core::ok_outcome(payload))
+            }
+            Err(e) => {
+                context.stack_restore(snapshot);
+                while context.module_stack_depth() > module_depth {
+                    let _ = context.module_stack_pop();
+                }
+                Ok(super::core::error_outcome(&e))
+            }
+        }
     }
 
     fn word_first(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {

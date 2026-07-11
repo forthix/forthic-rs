@@ -300,23 +300,7 @@ impl Default for ForthicJsonRpcServicer {
 
 /// The `error_type` wire string for each ForthicError variant
 fn forthic_error_type(e: &ForthicError) -> &'static str {
-    match e {
-        ForthicError::UnknownWord { .. } => "UnknownWord",
-        ForthicError::WordExecution { .. } => "WordExecution",
-        ForthicError::MissingSemicolon { .. } => "MissingSemicolon",
-        ForthicError::ExtraSemicolon { .. } => "ExtraSemicolon",
-        ForthicError::StackUnderflow { .. } => "StackUnderflow",
-        ForthicError::InvalidVariableName { .. } => "InvalidVariableName",
-        ForthicError::UnknownModule { .. } => "UnknownModule",
-        ForthicError::InvalidInputPosition { .. } => "InvalidInputPosition",
-        ForthicError::InvalidWordName { .. } => "InvalidWordName",
-        ForthicError::UnterminatedString { .. } => "UnterminatedString",
-        ForthicError::UnknownToken { .. } => "UnknownToken",
-        ForthicError::Module { .. } => "Module",
-        ForthicError::TooManyAttempts { .. } => "TooManyAttempts",
-        ForthicError::IntentionalStop { .. } => "IntentionalStop",
-        ForthicError::InvalidOperation { .. } => "InvalidOperation",
-    }
+    e.type_name()
 }
 
 /// Dispatch one parsed JSON-RPC request to the servicer, producing the full

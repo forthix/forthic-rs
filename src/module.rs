@@ -61,6 +61,25 @@ pub trait InterpreterContext {
             cause: None,
         })
     }
+
+    /// Snapshot the full stack (TRY / MAP-outcomes transactional restore).
+    /// Panicking default: contexts that don't support TRY-style words keep
+    /// compiling; the real Interpreter overrides.
+    fn stack_snapshot(&self) -> Vec<ForthicValue> {
+        panic!("This interpreter context does not support stack snapshots (needed by TRY)")
+    }
+
+    /// Restore the stack to a previous snapshot (see stack_snapshot)
+    fn stack_restore(&mut self, _items: Vec<ForthicValue>) {
+        panic!("This interpreter context does not support stack restore (needed by TRY)")
+    }
+
+    /// Depth of the module stack (the app module is depth 1). Used by TRY to
+    /// unwind modules left open by failed code. Defaults to 1 (app module
+    /// only) for simple contexts.
+    fn module_stack_depth(&self) -> usize {
+        1
+    }
 }
 
 /// Word error handler trait - handles errors during word execution

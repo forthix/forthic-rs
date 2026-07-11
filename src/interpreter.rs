@@ -232,6 +232,12 @@ impl Stack {
     }
 
     /// Get a reference to all items
+    /// Replace the stack's contents wholesale (used by TRY's transactional
+    /// restore)
+    pub fn set_items(&mut self, items: Vec<ForthicValue>) {
+        self.items = items;
+    }
+
     pub fn items(&self) -> &[ForthicValue] {
         &self.items
     }
@@ -1036,6 +1042,18 @@ impl InterpreterContext for Interpreter {
         // Explicit path: `self.run(code)` here would resolve to this trait
         // method and recurse forever
         Interpreter::run(self, code)
+    }
+
+    fn stack_snapshot(&self) -> Vec<ForthicValue> {
+        self.stack.items().to_vec()
+    }
+
+    fn stack_restore(&mut self, items: Vec<ForthicValue>) {
+        self.stack.set_items(items);
+    }
+
+    fn module_stack_depth(&self) -> usize {
+        self.module_stack.len()
     }
 
     fn stack_pop(&mut self) -> Result<ForthicValue, ForthicError> {
