@@ -92,6 +92,28 @@ the spec for anything ported.
     recoverable region; never recover from TooManyAttempts).
     `ForthicError::TooManyAttempts` exists but is dead code today.
 
+## Tier 5 — Coordinated contract changes (both repos, ts leads)
+
+Unlike Tiers 1–4 (rs catching up to post-scrub ts), these change the
+cross-runtime contract itself, so they land in forthic-ts first and rs
+mirrors in the same pass — the plain-time extension (ts #36) is the model.
+
+17. **`>STR` of records should be useful, not "[object Object]".** Both
+    runtimes currently emit JS `Object.prototype.toString` output for
+    records (rs deliberately matches ts). Proposal: JSON rendering
+    (insertion-ordered, same as `>JSON`). Decide at the same time whether
+    array `>STR` stays JS comma-join (`"1,2,3"`) or also becomes JSON
+    (`"[1,2,3]"`) — the latter is more consistent but changes more existing
+    programs. Update both repos' tests together.
+18. **Candidates worth a decision, not yet committed to:**
+    - DateTime `==` timezone-sensitivity: same instant in different
+      timezones is currently NOT equal (ISO-string comparison in ts,
+      matched in rs). Alternative: instant equality.
+    - Integral floats collapse on the wire (`Float(5.0)` → `int_value` →
+      `Int(5)`): inherent to JS's single number type; a `float_value`-
+      always-for-floats rule on the ts side would fix rs↔rs and
+      python↔rs fidelity through a ts hop.
+
 ## Immune — do not port (Rust semantics already close these)
 
 - **Copy-on-write aliasing (ts #32)**: rs values are owned; variable fetch
