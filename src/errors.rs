@@ -280,6 +280,29 @@ impl ForthicError {
         self
     }
 
+    /// Stable wire/data name for this error's variant. Used by the JSON-RPC
+    /// ErrorInfo `error_type` field and by TRY's error records — keep these
+    /// stable across releases even if variants are renamed.
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            Self::UnknownWord { .. } => "UnknownWord",
+            Self::WordExecution { .. } => "WordExecution",
+            Self::MissingSemicolon { .. } => "MissingSemicolon",
+            Self::ExtraSemicolon { .. } => "ExtraSemicolon",
+            Self::StackUnderflow { .. } => "StackUnderflow",
+            Self::InvalidVariableName { .. } => "InvalidVariableName",
+            Self::UnknownModule { .. } => "UnknownModule",
+            Self::InvalidInputPosition { .. } => "InvalidInputPosition",
+            Self::InvalidWordName { .. } => "InvalidWordName",
+            Self::UnterminatedString { .. } => "UnterminatedString",
+            Self::UnknownToken { .. } => "UnknownToken",
+            Self::Module { .. } => "Module",
+            Self::TooManyAttempts { .. } => "TooManyAttempts",
+            Self::IntentionalStop { .. } => "IntentionalStop",
+            Self::InvalidOperation { .. } => "InvalidOperation",
+        }
+    }
+
     /// Get the Forthic code associated with this error
     pub fn get_forthic(&self) -> Option<&str> {
         match self {

@@ -131,7 +131,7 @@ mirrors in the same pass — the plain-time extension (ts #36) is the model.
       always-for-floats rule on the ts side would fix rs↔rs and
       python↔rs fidelity through a ts hop.
 
-20. **TRY — general error handling as data (SPEC, both repos, ts leads).**
+20. **DONE — TRY: general error handling as data** (ts #38 + rs companion).
     Forthic's default error behavior is already Rust's `?` (auto-propagate);
     TRY adds the other half of the Result model: holding an error as a value.
     Replaces MAP's push_error option (removed cold from ts; never ships in
@@ -161,8 +161,20 @@ mirrors in the same pass — the plain-time extension (ts #36) is the model.
 
     Law (the guessability contract, tested in both repos):
     `'CODE' TRY UNWRAP ≡ CODE` — same stack on success; on failure the
-    same message/location observable, and TRY UNWRAP-OR gives fallbacks.
-    Error-tolerant mapping is composition: `[xs] "'F' TRY" MAP`.
+    same message/type observable, and TRY UNWRAP-OR gives fallbacks.
+
+    AMENDED (option A, decided during ts implementation): error-tolerant
+    mapping is NOT TRY composition — TRY's snapshot inside MAP includes the
+    item MAP pushed, so a failing element is transactionally (correctly!)
+    restored and stranded beneath the outcome. MAP instead has an
+    `outcomes` option ([.outcomes TRUE] ~> MAP → {ok}/{error} per element,
+    fixed arity): MAP is the party that knows its own push arity, so it
+    snapshots BEFORE the push and a failed element consumes its item. TRY
+    remains the general primitive for straight-line code; both repos pin
+    the TRY-in-MAP stranding behavior in a test as the documented reason
+    outcomes exists. One rs/ts divergence corner: the "did the stack
+    change" payload check is structural (PartialEq) in rs and identity
+    (===) in ts — behaviorally indistinguishable in practice.
 
 ## Immune — do not port (Rust semantics already close these)
 
