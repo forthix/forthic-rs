@@ -105,16 +105,21 @@ mirrors in the same pass — the plain-time extension (ts #36) is the model.
     programs through both interpreters. Bonus: rs `>JSON` temporal forms
     aligned with ts `Temporal.toJSON` (times keep fractional seconds,
     zoned datetimes carry the bracketed timezone annotation).
-18. **Unify the string-measurement unit across runtimes (code points).**
-    Verified divergence: ts counts UTF-16 code units, rs counts chars
-    (code points) after the UTF-8 tokenizer fix, so token positions differ
-    when astral-plane chars precede a token (`'🦀🦀' WORD` → start_pos 7
-    in ts, 5 in rs), and `'🦀' STR-LENGTH` is 2 in ts while rs's LENGTH
-    gives 4 (BYTES — same bug class as the tokenizer; should be chars).
-    Positions are cosmetic today but become load-bearing with
-    word-location work (ts #30). Proposal: code points everywhere
-    (ts: `[...str].length` + code-point positions; rs: `chars().count()`
-    in LENGTH).
+18. **String-measurement units: DECIDED — host-native, not unified.**
+    Each runtime uses its host language's natural unit: ts counts UTF-16
+    code units (JS `.length`, editor/LSP-friendly), rs counts code points
+    (`chars()`), python would count code points. Being frictionless in the
+    host language outweighs cross-runtime consistency (decided 2026-07-11).
+    Consequences, all accepted and to be documented rather than fixed:
+    - Positions and STR-LENGTH/LENGTH diverge across runtimes only for
+      astral-plane chars (`'🦀' LENGTH`: 1 in rs, 2 in ts; BMP text —
+      accented Latin, CJK — agrees everywhere).
+    - Wire positions (`word_location` in ErrorInfo) travel next to the
+      `runtime` field, so consumers know whose units they're reading.
+    - Cross-runtime tests must not assert position/length equality on
+      astral-plane inputs.
+    Remaining task: document the unit in each repo (word docs for
+    LENGTH/STR-LENGTH/SUBSTR + a note in the proto's word_location field).
 19. **Candidates worth a decision, not yet committed to:**
     - DateTime `==` timezone-sensitivity: same instant in different
       timezones is currently NOT equal (ISO-string comparison in ts,
