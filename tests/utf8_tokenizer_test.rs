@@ -171,6 +171,17 @@ fn test_line_column_after_multibyte_line() {
     assert_eq!(word.location.column, 1);
 }
 
+// ===== String LENGTH counts chars, not bytes =====
+
+#[test]
+fn test_string_length_counts_chars() {
+    // Same bug class as the tokenizer: s.len() is bytes. '🦀' is 1 char,
+    // 4 bytes; 'héllo' is 5 chars, 6 bytes.
+    assert_eq!(run("'🦀' LENGTH"), ForthicValue::Int(1));
+    assert_eq!(run("'héllo' LENGTH"), ForthicValue::Int(5));
+    assert_eq!(run("'日本語' LENGTH"), ForthicValue::Int(3));
+}
+
 // ===== Mixed stress =====
 
 #[test]

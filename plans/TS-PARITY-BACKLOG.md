@@ -105,7 +105,17 @@ mirrors in the same pass — the plain-time extension (ts #36) is the model.
     programs through both interpreters. Bonus: rs `>JSON` temporal forms
     aligned with ts `Temporal.toJSON` (times keep fractional seconds,
     zoned datetimes carry the bracketed timezone annotation).
-18. **Candidates worth a decision, not yet committed to:**
+18. **Unify the string-measurement unit across runtimes (code points).**
+    Verified divergence: ts counts UTF-16 code units, rs counts chars
+    (code points) after the UTF-8 tokenizer fix, so token positions differ
+    when astral-plane chars precede a token (`'🦀🦀' WORD` → start_pos 7
+    in ts, 5 in rs), and `'🦀' STR-LENGTH` is 2 in ts while rs's LENGTH
+    gives 4 (BYTES — same bug class as the tokenizer; should be chars).
+    Positions are cosmetic today but become load-bearing with
+    word-location work (ts #30). Proposal: code points everywhere
+    (ts: `[...str].length` + code-point positions; rs: `chars().count()`
+    in LENGTH).
+19. **Candidates worth a decision, not yet committed to:**
     - DateTime `==` timezone-sensitivity: same instant in different
       timezones is currently NOT equal (ISO-string comparison in ts,
       matched in rs). Alternative: instant equality.

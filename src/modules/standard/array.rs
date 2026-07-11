@@ -116,7 +116,10 @@ impl ArrayModule {
         let length = match container {
             ForthicValue::Array(ref arr) => arr.len() as i64,
             ForthicValue::Record(ref rec) => rec.len() as i64,
-            ForthicValue::String(ref s) => s.len() as i64,
+            // Chars, not bytes ('🦀' has length 1, not 4). ts currently
+            // reports UTF-16 units (2 for '🦀') — unifying on code points
+            // is backlog item 18.
+            ForthicValue::String(ref s) => s.chars().count() as i64,
             ForthicValue::Null => 0,
             _ => 0,
         };
