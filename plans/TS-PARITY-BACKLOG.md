@@ -66,7 +66,7 @@ the spec for anything ported.
     ~hundreds of bytes on the happy path too (clippy: result_large_err,
     allowed at crate level for now). Standard fix: box the big fields or the
     whole error. Mechanical but touches every error site.
-12. **Tokenizer mixes byte and char indices** (`tokenizer.rs:142-151`
+12. **DONE — Tokenizer mixes byte and char indices** (`tokenizer.rs:142-151`
     and around): `input_string.len()` (bytes) vs `chars().nth` — can
     misbehave or index out of bounds on multibyte UTF-8 input. Deserves a
     dedicated robustness pass with UTF-8 tests.
@@ -105,7 +105,22 @@ mirrors in the same pass — the plain-time extension (ts #36) is the model.
     programs through both interpreters. Bonus: rs `>JSON` temporal forms
     aligned with ts `Temporal.toJSON` (times keep fractional seconds,
     zoned datetimes carry the bracketed timezone annotation).
-18. **Candidates worth a decision, not yet committed to:**
+18. **String-measurement units: DECIDED — host-native, not unified.**
+    Each runtime uses its host language's natural unit: ts counts UTF-16
+    code units (JS `.length`, editor/LSP-friendly), rs counts code points
+    (`chars()`), python would count code points. Being frictionless in the
+    host language outweighs cross-runtime consistency (decided 2026-07-11).
+    Consequences, all accepted and to be documented rather than fixed:
+    - Positions and STR-LENGTH/LENGTH diverge across runtimes only for
+      astral-plane chars (`'🦀' LENGTH`: 1 in rs, 2 in ts; BMP text —
+      accented Latin, CJK — agrees everywhere).
+    - Wire positions (`word_location` in ErrorInfo) travel next to the
+      `runtime` field, so consumers know whose units they're reading.
+    - Cross-runtime tests must not assert position/length equality on
+      astral-plane inputs.
+    Remaining task: document the unit in each repo (word docs for
+    LENGTH/STR-LENGTH/SUBSTR + a note in the proto's word_location field).
+19. **Candidates worth a decision, not yet committed to:**
     - DateTime `==` timezone-sensitivity: same instant in different
       timezones is currently NOT equal (ISO-string comparison in ts,
       matched in rs). Alternative: instant equality.
