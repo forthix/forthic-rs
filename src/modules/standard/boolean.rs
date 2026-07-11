@@ -279,11 +279,9 @@ impl BooleanModule {
 
         match (&items1, &items2) {
             (ForthicValue::Array(arr1), ForthicValue::Array(arr2)) => {
-                // If items2 is empty, return true
-                if arr2.is_empty() {
-                    context.stack_push(ForthicValue::Bool(true));
-                    return Ok(());
-                }
+                // No special case for empty items2: nothing can match against
+                // an empty set, so the loop correctly yields false (the old
+                // return-true branch was a bug, fixed in ts #31)
 
                 // Check if any item from items1 is in items2
                 for item in arr1 {
@@ -356,6 +354,21 @@ impl BooleanModule {
                     return false;
                 }
                 av.iter().zip(bv.iter()).all(|(a, b)| Self::values_equal(a, b))
+            }
+            (ForthicValue::Date(av), ForthicValue::Date(bv)) => av == bv,
+            (ForthicValue::Time(av), ForthicValue::Time(bv)) => av == bv,
+            // ts compares Temporal values by ISO string, which includes the
+            // timezone annotation — the same instant in different timezones
+            // is NOT equal. chrono's == compares instants only, so the
+            // timezone check is required for parity.
+            (ForthicValue::DateTime(av), ForthicValue::DateTime(bv)) => {
+                av == bv && av.timezone().name() == bv.timezone().name()
+            }
+            (ForthicValue::Record(av), ForthicValue::Record(bv)) => {
+                av.len() == bv.len()
+                    && av
+                        .iter()
+                        .all(|(k, v)| bv.get(k).is_some_and(|bv2| Self::values_equal(v, bv2)))
             }
             _ => false,
         }

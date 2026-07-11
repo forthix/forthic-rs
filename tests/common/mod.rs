@@ -4,6 +4,10 @@
 //! gracefully, so tests are isolated and parallel-safe. Note: tests pass
 //! ServeOptions explicitly rather than via FORTHIC_JSONRPC_* env vars —
 //! env is process-global and cargo runs tests in parallel threads.
+//!
+//! (dead_code allowed: this module compiles once per including test crate,
+//! and not every crate uses every helper.)
+#![allow(dead_code)]
 
 use forthic::jsonrpc::{serve, ServeOptions, ServerHandle};
 use serde_json::{json, Value};
