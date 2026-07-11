@@ -10,7 +10,7 @@ use crate::errors::ForthicError;
 use crate::literals::ForthicValue;
 use crate::module::{InterpreterContext, Module, ModuleWord};
 use serde_json::{json, Value as JsonValue};
-use std::collections::HashMap;
+use indexmap::IndexMap;
 use std::sync::Arc;
 
 /// JSONModule provides JSON serialization operations
@@ -168,7 +168,7 @@ impl JSONModule {
                 ForthicValue::Array(forthic_arr)
             }
             JsonValue::Object(obj) => {
-                let forthic_rec: HashMap<String, ForthicValue> = obj
+                let forthic_rec: IndexMap<String, ForthicValue> = obj
                     .iter()
                     .map(|(k, v)| (k.clone(), Self::json_to_forthic(v)))
                     .collect();

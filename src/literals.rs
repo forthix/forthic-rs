@@ -14,8 +14,8 @@
 use crate::word_options::WordOptions;
 use chrono::{Datelike, NaiveDate, NaiveTime, TimeZone, Utc};
 use chrono_tz::Tz;
+use indexmap::IndexMap;
 use regex::Regex;
-use std::collections::HashMap;
 
 /// Core value type for Forthic
 #[derive(Debug, Clone, PartialEq)]
@@ -26,7 +26,10 @@ pub enum ForthicValue {
     Float(f64),
     String(String),
     Array(Vec<ForthicValue>),
-    Record(HashMap<String, ForthicValue>),
+    /// Records preserve key insertion order (IndexMap), matching JS object
+    /// semantics — the record words (NTH, TAKE, KEYS, ...) depend on it.
+    /// Note IndexMap equality is order-insensitive, like the old HashMap.
+    Record(IndexMap<String, ForthicValue>),
     Date(NaiveDate),
     Time(NaiveTime),
     DateTime(chrono::DateTime<Tz>),

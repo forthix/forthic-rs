@@ -10,7 +10,7 @@
 use crate::errors::ForthicError;
 use crate::literals::ForthicValue;
 use crate::module::{InterpreterContext, Module, ModuleWord};
-use std::collections::HashMap;
+use indexmap::IndexMap;
 use std::sync::Arc;
 
 /// RecordModule provides record/dictionary operations
@@ -62,7 +62,7 @@ impl RecordModule {
 
         let result = match key_vals {
             ForthicValue::Array(pairs) => {
-                let mut record = HashMap::new();
+                let mut record = IndexMap::new();
 
                 for pair in pairs {
                     if let ForthicValue::Array(kv) = pair {
@@ -76,8 +76,8 @@ impl RecordModule {
 
                 ForthicValue::Record(record)
             }
-            ForthicValue::Null => ForthicValue::Record(HashMap::new()),
-            _ => ForthicValue::Record(HashMap::new()),
+            ForthicValue::Null => ForthicValue::Record(IndexMap::new()),
+            _ => ForthicValue::Record(IndexMap::new()),
         };
 
         context.stack_push(result);
@@ -115,7 +115,7 @@ impl RecordModule {
 
         let mut record = match rec {
             ForthicValue::Record(r) => r,
-            ForthicValue::Null => HashMap::new(),
+            ForthicValue::Null => IndexMap::new(),
             _ => {
                 context.stack_push(rec);
                 return Ok(());
@@ -159,7 +159,7 @@ impl RecordModule {
 
     /// Set value in nested record structure
     fn set_nested_value(
-        record: &mut HashMap<String, ForthicValue>,
+        record: &mut IndexMap<String, ForthicValue>,
         fields: &[ForthicValue],
         value: ForthicValue,
     ) {
@@ -178,7 +178,7 @@ impl RecordModule {
         if let ForthicValue::String(key) = &fields[0] {
             let current = record
                 .entry(key.clone())
-                .or_insert_with(|| ForthicValue::Record(HashMap::new()));
+                .or_insert_with(|| ForthicValue::Record(IndexMap::new()));
 
             if let ForthicValue::Record(ref mut nested) = current {
                 Self::set_nested_value(nested, &fields[1..], value);
@@ -233,7 +233,7 @@ impl RecordModule {
 
         let result = match container {
             ForthicValue::Record(rec) => {
-                let mut new_rec = HashMap::new();
+                let mut new_rec = IndexMap::new();
 
                 for i in 0..old_keys.len() {
                     if let (ForthicValue::String(old_key), ForthicValue::String(new_key)) =
@@ -259,7 +259,7 @@ impl RecordModule {
 
         let result = match record {
             ForthicValue::Record(rec) => {
-                let mut inverted: HashMap<String, HashMap<String, ForthicValue>> = HashMap::new();
+                let mut inverted: IndexMap<String, IndexMap<String, ForthicValue>> = IndexMap::new();
 
                 for (first_key, sub_val) in rec {
                     if let ForthicValue::Record(sub_rec) = sub_val {
@@ -272,7 +272,7 @@ impl RecordModule {
                     }
                 }
 
-                let result_rec: HashMap<String, ForthicValue> = inverted
+                let result_rec: IndexMap<String, ForthicValue> = inverted
                     .into_iter()
                     .map(|(k, v)| (k, ForthicValue::Record(v)))
                     .collect();

@@ -26,7 +26,7 @@ use crate::literals::ForthicValue;
 use chrono::SecondsFormat;
 use chrono_tz::Tz;
 use serde_json::{json, Map, Value};
-use std::collections::HashMap;
+use indexmap::IndexMap;
 use thiserror::Error;
 
 /// Errors from StackValue serialization/deserialization
@@ -231,7 +231,7 @@ fn deserialize_at(stack_value: &Value, path: &str) -> Result<ForthicValue, Seria
             .get("fields")
             .and_then(Value::as_object)
             .ok_or_else(|| invalid("record_value requires object \"fields\"", path))?;
-        let mut out = HashMap::with_capacity(fields.len());
+        let mut out = IndexMap::with_capacity(fields.len());
         for (key, val) in fields {
             let child_path = format!("{path}{}", path_segment_for_key(key));
             out.insert(key.clone(), deserialize_at(val, &child_path)?);

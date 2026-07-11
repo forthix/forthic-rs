@@ -1,7 +1,7 @@
 use forthic::literals::ForthicValue;
 use forthic::module::{InterpreterContext, Module};
 use forthic::modules::standard::JSONModule;
-use std::collections::HashMap;
+use indexmap::IndexMap;
 
 // Mock interpreter context for testing
 struct MockContext {
@@ -161,7 +161,7 @@ fn test_to_json_record() {
     let module = JSONModule::new();
     let mut ctx = MockContext::new();
 
-    let mut rec = HashMap::new();
+    let mut rec = IndexMap::new();
     rec.insert(
         "name".to_string(),
         ForthicValue::String("Alice".to_string()),
@@ -356,7 +356,7 @@ fn test_roundtrip_complex_structure() {
     let mut ctx = MockContext::new();
 
     // Create complex structure
-    let mut rec = HashMap::new();
+    let mut rec = IndexMap::new();
     rec.insert("name".to_string(), ForthicValue::String("Bob".to_string()));
     rec.insert(
         "scores".to_string(),

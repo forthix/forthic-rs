@@ -1,7 +1,7 @@
 use forthic::literals::ForthicValue;
 use forthic::module::{InterpreterContext, Module};
 use forthic::modules::standard::RecordModule;
-use std::collections::HashMap;
+use indexmap::IndexMap;
 
 // Mock interpreter context for testing
 struct MockContext {
@@ -97,7 +97,7 @@ fn test_rec_at() {
     let module = RecordModule::new();
     let mut ctx = MockContext::new();
 
-    let mut rec = HashMap::new();
+    let mut rec = IndexMap::new();
     rec.insert("name".to_string(), ForthicValue::String("Bob".to_string()));
     rec.insert("age".to_string(), ForthicValue::Int(25));
 
@@ -117,10 +117,10 @@ fn test_rec_at_nested() {
     let module = RecordModule::new();
     let mut ctx = MockContext::new();
 
-    let mut inner_rec = HashMap::new();
+    let mut inner_rec = IndexMap::new();
     inner_rec.insert("city".to_string(), ForthicValue::String("NYC".to_string()));
 
-    let mut rec = HashMap::new();
+    let mut rec = IndexMap::new();
     rec.insert("address".to_string(), ForthicValue::Record(inner_rec));
 
     let word = module.module().find_word("REC@").unwrap();
@@ -142,7 +142,7 @@ fn test_set_rec() {
     let module = RecordModule::new();
     let mut ctx = MockContext::new();
 
-    let mut rec = HashMap::new();
+    let mut rec = IndexMap::new();
     rec.insert(
         "name".to_string(),
         ForthicValue::String("Alice".to_string()),
@@ -173,7 +173,7 @@ fn test_relabel() {
     let module = RecordModule::new();
     let mut ctx = MockContext::new();
 
-    let mut rec = HashMap::new();
+    let mut rec = IndexMap::new();
     rec.insert("old1".to_string(), ForthicValue::Int(1));
     rec.insert("old2".to_string(), ForthicValue::Int(2));
 
@@ -204,15 +204,15 @@ fn test_invert_keys() {
     let module = RecordModule::new();
     let mut ctx = MockContext::new();
 
-    let mut inner1 = HashMap::new();
+    let mut inner1 = IndexMap::new();
     inner1.insert("a".to_string(), ForthicValue::Int(1));
     inner1.insert("b".to_string(), ForthicValue::Int(2));
 
-    let mut inner2 = HashMap::new();
+    let mut inner2 = IndexMap::new();
     inner2.insert("a".to_string(), ForthicValue::Int(3));
     inner2.insert("b".to_string(), ForthicValue::Int(4));
 
-    let mut rec = HashMap::new();
+    let mut rec = IndexMap::new();
     rec.insert("x".to_string(), ForthicValue::Record(inner1));
     rec.insert("y".to_string(), ForthicValue::Record(inner2));
 
@@ -242,7 +242,7 @@ fn test_rec_defaults() {
     let module = RecordModule::new();
     let mut ctx = MockContext::new();
 
-    let mut rec = HashMap::new();
+    let mut rec = IndexMap::new();
     rec.insert(
         "name".to_string(),
         ForthicValue::String("Alice".to_string()),
@@ -284,7 +284,7 @@ fn test_del() {
     let module = RecordModule::new();
     let mut ctx = MockContext::new();
 
-    let mut rec = HashMap::new();
+    let mut rec = IndexMap::new();
     rec.insert(
         "name".to_string(),
         ForthicValue::String("Alice".to_string()),
@@ -313,7 +313,7 @@ fn test_keys() {
     let module = RecordModule::new();
     let mut ctx = MockContext::new();
 
-    let mut rec = HashMap::new();
+    let mut rec = IndexMap::new();
     rec.insert(
         "name".to_string(),
         ForthicValue::String("Alice".to_string()),
@@ -340,7 +340,7 @@ fn test_values() {
     let module = RecordModule::new();
     let mut ctx = MockContext::new();
 
-    let mut rec = HashMap::new();
+    let mut rec = IndexMap::new();
     rec.insert("a".to_string(), ForthicValue::Int(1));
     rec.insert("b".to_string(), ForthicValue::Int(2));
 

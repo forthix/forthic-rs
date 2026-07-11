@@ -109,13 +109,12 @@ impl ArrayModule {
                 }
             }
             ForthicValue::Record(rec) => {
-                let mut keys: Vec<_> = rec.keys().cloned().collect();
-                keys.sort();
-                if n < 0 || n >= keys.len() as i64 {
+                // Insertion order (ts #33) — IndexMap makes this direct
+                if n < 0 {
                     ForthicValue::Null
                 } else {
-                    rec.get(&keys[n as usize])
-                        .cloned()
+                    rec.get_index(n as usize)
+                        .map(|(_, v)| v.clone())
                         .unwrap_or(ForthicValue::Null)
                 }
             }
@@ -138,15 +137,10 @@ impl ArrayModule {
                 }
             }
             ForthicValue::Record(rec) => {
-                let mut keys: Vec<_> = rec.keys().cloned().collect();
-                keys.sort();
-                if keys.is_empty() {
-                    ForthicValue::Null
-                } else {
-                    rec.get(&keys[keys.len() - 1])
-                        .cloned()
-                        .unwrap_or(ForthicValue::Null)
-                }
+                // Insertion order (ts #33)
+                rec.last()
+                    .map(|(_, v)| v.clone())
+                    .unwrap_or(ForthicValue::Null)
             }
             _ => ForthicValue::Null,
         };
