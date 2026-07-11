@@ -57,7 +57,12 @@ the spec for anything ported.
 10. **No CI.** ts added build/test/smoke in #24; rs has no
     `.github/workflows` at all. Add: `cargo build`, `cargo test
     --all-features`, `cargo fmt --check`, `cargo clippy` on stable.
-11. **Tokenizer mixes byte and char indices** (`tokenizer.rs:142-151`
+11. **Box the ForthicError payload.** The enum is large (source snippets +
+    locations in every variant), so every `Result<_, ForthicError>` moves
+    ~hundreds of bytes on the happy path too (clippy: result_large_err,
+    allowed at crate level for now). Standard fix: box the big fields or the
+    whole error. Mechanical but touches every error site.
+12. **Tokenizer mixes byte and char indices** (`tokenizer.rs:142-151`
     and around): `input_string.len()` (bytes) vs `chars().nth` — can
     misbehave or index out of bounds on multibyte UTF-8 input. Deserves a
     dedicated robustness pass with UTF-8 tests.

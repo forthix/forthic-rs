@@ -114,7 +114,7 @@ impl CoreModule {
                     if varname.starts_with("__") {
                         return Err(ForthicError::InvalidVariableName {
                             forthic: "".to_string(),
-                            varname: varname,
+                            varname,
                             location: None,
                             cause: None,
                         });
@@ -136,7 +136,7 @@ impl CoreModule {
             if varname.starts_with("__") {
                 return Err(ForthicError::InvalidVariableName {
                     forthic: "".to_string(),
-                    varname: varname,
+                    varname,
                     location: None,
                     cause: None,
                 });
@@ -166,7 +166,7 @@ impl CoreModule {
             if varname.starts_with("__") {
                 return Err(ForthicError::InvalidVariableName {
                     forthic: "".to_string(),
-                    varname: varname,
+                    varname,
                     location: None,
                     cause: None,
                 });
@@ -204,7 +204,7 @@ impl CoreModule {
             if varname.starts_with("__") {
                 return Err(ForthicError::InvalidVariableName {
                     forthic: "".to_string(),
-                    varname: varname,
+                    varname,
                     location: None,
                     cause: None,
                 });

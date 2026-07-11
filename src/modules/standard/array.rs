@@ -313,11 +313,7 @@ impl ArrayModule {
                 }
                 ForthicValue::Record(rec)
             }
-            ForthicValue::Null => {
-                let mut arr = Vec::new();
-                arr.push(item);
-                ForthicValue::Array(arr)
-            }
+            ForthicValue::Null => ForthicValue::Array(vec![item]),
             _ => container,
         };
 
@@ -419,7 +415,7 @@ impl ArrayModule {
 
         let result = match (left, right) {
             (ForthicValue::Array(l), ForthicValue::Array(r)) => {
-                let r_set: HashSet<_> = r.iter().map(|v| Self::value_to_key(v)).collect();
+                let r_set: HashSet<_> = r.iter().map(Self::value_to_key).collect();
                 let diff: Vec<_> = l
                     .into_iter()
                     .filter(|v| !r_set.contains(&Self::value_to_key(v)))
@@ -439,7 +435,7 @@ impl ArrayModule {
 
         let result = match (left, right) {
             (ForthicValue::Array(l), ForthicValue::Array(r)) => {
-                let r_set: HashSet<_> = r.iter().map(|v| Self::value_to_key(v)).collect();
+                let r_set: HashSet<_> = r.iter().map(Self::value_to_key).collect();
                 let inter: Vec<_> = l
                     .into_iter()
                     .filter(|v| r_set.contains(&Self::value_to_key(v)))
@@ -462,7 +458,7 @@ impl ArrayModule {
                 let mut seen = HashSet::new();
                 let mut union = Vec::new();
 
-                for item in l.into_iter().chain(r.into_iter()) {
+                for item in l.into_iter().chain(r) {
                     let key = Self::value_to_key(&item);
                     if seen.insert(key) {
                         union.push(item);

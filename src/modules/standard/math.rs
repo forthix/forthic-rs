@@ -221,7 +221,7 @@ impl MathModule {
                 return Ok(());
             }
 
-            let numbers: Vec<f64> = arr.iter().filter_map(|v| Self::to_number(v)).collect();
+            let numbers: Vec<f64> = arr.iter().filter_map(Self::to_number).collect();
             if numbers.is_empty() {
                 context.stack_push(ForthicValue::Null);
                 return Ok(());
@@ -256,7 +256,7 @@ impl MathModule {
                 return Ok(());
             }
 
-            let numbers: Vec<f64> = arr.iter().filter_map(|v| Self::to_number(v)).collect();
+            let numbers: Vec<f64> = arr.iter().filter_map(Self::to_number).collect();
             if numbers.is_empty() {
                 context.stack_push(ForthicValue::Null);
                 return Ok(());
@@ -290,7 +290,7 @@ impl MathModule {
                 return Ok(());
             }
 
-            let numbers: Vec<f64> = arr.iter().filter_map(|v| Self::to_number(v)).collect();
+            let numbers: Vec<f64> = arr.iter().filter_map(Self::to_number).collect();
             if numbers.is_empty() {
                 context.stack_push(ForthicValue::Int(0));
                 return Ok(());

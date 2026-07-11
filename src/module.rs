@@ -689,7 +689,7 @@ impl Module {
 
         self.module_prefixes
             .entry(module_name)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(prefix);
     }
 

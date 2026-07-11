@@ -1,3 +1,6 @@
+// ForthicError is large; accepted trade-off (see lib.rs / backlog item 11)
+#![allow(clippy::result_large_err)]
+
 use forthic::errors::ForthicError;
 use forthic::literals::ForthicValue;
 use forthic::module::{InterpreterContext, Module, ModuleWord, Word, WordErrorHandler};

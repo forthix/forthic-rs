@@ -81,6 +81,12 @@ impl Word for StartModuleWord {
 #[derive(Debug, Clone)]
 pub struct EndModuleWord;
 
+impl Default for EndModuleWord {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EndModuleWord {
     pub fn new() -> Self {
         Self
@@ -104,6 +110,12 @@ impl Word for EndModuleWord {
 /// then pushes them as a single array in the correct order.
 #[derive(Debug, Clone)]
 pub struct EndArrayWord;
+
+impl Default for EndArrayWord {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl EndArrayWord {
     pub fn new() -> Self {
@@ -968,7 +980,7 @@ impl Interpreter {
         self.module_stack_push(module.clone());
 
         // Try to run the module's code
-        let result = self.run(&module.get_forthic_code());
+        let result = self.run(module.get_forthic_code());
 
         // Always pop the module, even if there was an error
         self.module_stack_pop()?;
@@ -1288,7 +1300,7 @@ mod tests {
         let mut interp = Interpreter::new("UTC");
 
         // Push some literals onto the stack
-        interp.run("42 3.14 TRUE 'hello'").unwrap();
+        interp.run("42 3.25 TRUE 'hello'").unwrap();
 
         // Check stack contents
         assert_eq!(interp.get_stack().len(), 4);
@@ -1297,7 +1309,7 @@ mod tests {
             ForthicValue::String("hello".to_string())
         );
         assert_eq!(interp.stack_pop().unwrap(), ForthicValue::Bool(true));
-        assert_eq!(interp.stack_pop().unwrap(), ForthicValue::Float(3.14));
+        assert_eq!(interp.stack_pop().unwrap(), ForthicValue::Float(3.25));
         assert_eq!(interp.stack_pop().unwrap(), ForthicValue::Int(42));
     }
 
@@ -1390,10 +1402,10 @@ mod tests {
         let mut interp = Interpreter::new("UTC");
 
         // Comments should be ignored
-        interp.run("42 # This is a comment\n3.14").unwrap();
+        interp.run("42 # This is a comment\n3.25").unwrap();
 
         assert_eq!(interp.get_stack().len(), 2);
-        assert_eq!(interp.stack_pop().unwrap(), ForthicValue::Float(3.14));
+        assert_eq!(interp.stack_pop().unwrap(), ForthicValue::Float(3.25));
         assert_eq!(interp.stack_pop().unwrap(), ForthicValue::Int(42));
     }
 
@@ -1547,7 +1559,7 @@ mod tests {
         let mut module = Module::new("math".to_string());
         let word = Arc::new(PushValueWord::new(
             "PI".to_string(),
-            ForthicValue::Float(3.14),
+            ForthicValue::Float(std::f64::consts::PI),
         ));
         module.add_exportable_word(word);
 
@@ -1568,7 +1580,7 @@ mod tests {
         let mut module = Module::new("math".to_string());
         let word = Arc::new(PushValueWord::new(
             "PI".to_string(),
-            ForthicValue::Float(3.14),
+            ForthicValue::Float(std::f64::consts::PI),
         ));
         module.add_exportable_word(word);
         interp.import_module(module, "");
@@ -1598,7 +1610,7 @@ mod tests {
         let mut module = Module::new("math".to_string());
         let word = Arc::new(PushValueWord::new(
             "PI".to_string(),
-            ForthicValue::Float(3.14),
+            ForthicValue::Float(std::f64::consts::PI),
         ));
         module.add_exportable_word(word);
 

@@ -110,7 +110,7 @@ impl WordOptions {
     /// assert_eq!(opts.get_bool("with_key"), Some(true));
     /// ```
     pub fn from_flat_array(flat_array: &[ForthicValue]) -> Result<Self, String> {
-        if flat_array.len() % 2 != 0 {
+        if !flat_array.len().is_multiple_of(2) {
             return Err(format!(
                 "Options must be key-value pairs (even length). Got {} elements",
                 flat_array.len()
@@ -328,7 +328,7 @@ mod tests {
             ForthicValue::String("int_val".to_string()),
             ForthicValue::Int(42),
             ForthicValue::String("float_val".to_string()),
-            ForthicValue::Float(3.14),
+            ForthicValue::Float(3.25),
             ForthicValue::String("bool_val".to_string()),
             ForthicValue::Bool(true),
             ForthicValue::String("string_val".to_string()),
@@ -338,7 +338,7 @@ mod tests {
         let opts = WordOptions::from_flat_array(&flat).unwrap();
 
         assert_eq!(opts.get_int("int_val"), Some(42));
-        assert_eq!(opts.get_float("float_val"), Some(3.14));
+        assert_eq!(opts.get_float("float_val"), Some(3.25));
         assert_eq!(opts.get_bool("bool_val"), Some(true));
         assert_eq!(opts.get_string("string_val"), Some("hello"));
 

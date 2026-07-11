@@ -113,12 +113,12 @@ fn test_to_json_float() {
     let mut ctx = MockContext::new();
 
     let word = module.module().find_word(">JSON").unwrap();
-    ctx.stack.push(ForthicValue::Float(3.14));
+    ctx.stack.push(ForthicValue::Float(3.25));
     word.execute(&mut ctx).unwrap();
 
     assert_eq!(
         ctx.stack.pop(),
-        Some(ForthicValue::String("3.14".to_string()))
+        Some(ForthicValue::String("3.25".to_string()))
     );
 }
 
@@ -224,10 +224,10 @@ fn test_from_json_float() {
     let mut ctx = MockContext::new();
 
     let word = module.module().find_word("JSON>").unwrap();
-    ctx.stack.push(ForthicValue::String("3.14".to_string()));
+    ctx.stack.push(ForthicValue::String("3.25".to_string()));
     word.execute(&mut ctx).unwrap();
 
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::Float(3.14)));
+    assert_eq!(ctx.stack.pop(), Some(ForthicValue::Float(3.25)));
 }
 
 #[test]

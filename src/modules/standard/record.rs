@@ -266,7 +266,7 @@ impl RecordModule {
                         for (second_key, value) in sub_rec {
                             inverted
                                 .entry(second_key)
-                                .or_insert_with(HashMap::new)
+                                .or_default()
                                 .insert(first_key.clone(), value);
                         }
                     }
