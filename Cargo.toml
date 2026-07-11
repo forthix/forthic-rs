@@ -12,8 +12,12 @@ repository = "https://github.com/forthic/forthic-rs"
 thiserror = "1.0"
 anyhow = "1.0"
 
-# The interpreter is deliberately synchronous (see plans/JSONRPC-PLAN.md).
-# tokio enters only via the `jsonrpc` feature when the server lands.
+# The interpreter is deliberately synchronous (see plans/JSONRPC-PLAN.md);
+# the async deps below are optional and enter only via the `jsonrpc` feature.
+axum = { version = "0.8", optional = true }
+http-body-util = { version = "0.1", optional = true }
+subtle = { version = "2", optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "signal", "sync"], optional = true }
 
 # Date/time
 chrono = "0.4"
@@ -41,9 +45,13 @@ proptest = "1.0"
 [features]
 default = []
 cli = ["clap", "rustyline", "colored"]
-# JSON-RPC multi-runtime support (see plans/JSONRPC-PLAN.md). Phase 3 adds
-# the server deps here (axum, tokio, subtle).
-jsonrpc = []
+# JSON-RPC multi-runtime support (see plans/JSONRPC-PLAN.md)
+jsonrpc = ["dep:axum", "dep:http-body-util", "dep:subtle", "dep:tokio"]
+
+[[bin]]
+name = "forthic-jsonrpc"
+path = "src/bin/forthic-jsonrpc.rs"
+required-features = ["jsonrpc"]
 
 [[test]]
 name = "jsonrpc_serializer_test"
