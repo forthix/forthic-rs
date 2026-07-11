@@ -12,12 +12,13 @@
 //!
 //! Cross-runtime type mapping:
 //! - `Date` ↔ `plain_date_value` (Temporal.PlainDate in ts)
+//! - `Time` ↔ `plain_time_value` (Temporal.PlainTime in ts)
 //! - `DateTime` → `zoned_datetime_value`; both `zoned_datetime_value` and
 //!   `instant_value` deserialize to `DateTime` (instants land in UTC).
 //!   The `iso8601` field carries Temporal's bracketed timezone annotation
 //!   (`...-07:00[America/Los_Angeles]`) because ts parses it with
 //!   `Temporal.ZonedDateTime.from`, which requires the annotation.
-//! - `Time`, `WordOptions`, and interpreter-internal markers have no wire
+//! - `WordOptions` and interpreter-internal markers have no wire
 //!   representation and fail to serialize, matching ts behavior for types
 //!   its serializer doesn't recognize.
 
@@ -117,7 +118,11 @@ fn serialize_at(value: &ForthicValue, path: &str) -> Result<Value, SerializerErr
                 }
             }))
         }
-        ForthicValue::Time(_) => Err(unsupported("Time", path)),
+        ForthicValue::Time(t) => Ok(json!({
+            // %.f matches Temporal.toString() trimming: nothing for whole
+            // seconds, minimal 3/6/9 digits otherwise
+            "plain_time_value": { "iso8601_time": t.format("%H:%M:%S%.f").to_string() }
+        })),
         ForthicValue::WordOptions(_) => Err(unsupported("WordOptions", path)),
         ForthicValue::StartArrayMarker => Err(unsupported("StartArrayMarker", path)),
     }
@@ -197,6 +202,13 @@ fn deserialize_at(stack_value: &Value, path: &str) -> Result<ForthicValue, Seria
         let date = chrono::NaiveDate::parse_from_str(iso, "%Y-%m-%d")
             .map_err(|e| invalid(format!("Invalid plain date '{iso}': {e}"), path))?;
         return Ok(ForthicValue::Date(date));
+    }
+    if let Some(v) = obj.get("plain_time_value") {
+        let iso = require_str_field(v, "iso8601_time", path)?;
+        let time = chrono::NaiveTime::parse_from_str(iso, "%H:%M:%S%.f")
+            .or_else(|_| chrono::NaiveTime::parse_from_str(iso, "%H:%M"))
+            .map_err(|e| invalid(format!("Invalid plain time '{iso}': {e}"), path))?;
+        return Ok(ForthicValue::Time(time));
     }
     if let Some(v) = obj.get("zoned_datetime_value") {
         let iso = require_str_field(v, "iso8601", path)?;

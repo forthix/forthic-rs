@@ -39,6 +39,8 @@ const GOLDEN_FIXTURES: &str = r#"{
     }
   },
   "plain_date": { "plain_date_value": { "iso8601_date": "2020-06-05" } },
+  "plain_time": { "plain_time_value": { "iso8601_time": "09:30:00" } },
+  "plain_time_ms": { "plain_time_value": { "iso8601_time": "23:59:59.123" } },
   "instant": { "instant_value": { "iso8601": "2020-06-05T17:15:00Z" } },
   "zoned": {
     "zoned_datetime_value": {
@@ -124,6 +126,14 @@ fn test_dates_match_ts_wire_format() {
     assert_bidirectional(
         "plain_date",
         ForthicValue::Date(NaiveDate::from_ymd_opt(2020, 6, 5).unwrap()),
+    );
+    assert_bidirectional(
+        "plain_time",
+        ForthicValue::Time(NaiveTime::from_hms_opt(9, 30, 0).unwrap()),
+    );
+    assert_bidirectional(
+        "plain_time_ms",
+        ForthicValue::Time(NaiveTime::from_hms_milli_opt(23, 59, 59, 123).unwrap()),
     );
     assert_bidirectional("zoned", la_datetime(2020, 6, 5, 10, 15, 0));
     assert_bidirectional(
@@ -284,10 +294,6 @@ fn test_malformed_payloads_are_errors() {
 fn test_unsupported_types_fail_to_serialize() {
     let cases: Vec<(ForthicValue, &str)> = vec![
         (
-            ForthicValue::Time(NaiveTime::from_hms_opt(9, 30, 0).unwrap()),
-            "Time",
-        ),
-        (
             ForthicValue::WordOptions(WordOptions::new()),
             "WordOptions",
         ),
@@ -306,16 +312,21 @@ fn test_unsupported_types_fail_to_serialize() {
 fn test_unsupported_type_reports_nested_path() {
     let mut rec = HashMap::new();
     rec.insert(
-        "times".to_string(),
-        ForthicValue::Array(vec![ForthicValue::Time(
-            NaiveTime::from_hms_opt(9, 30, 0).unwrap(),
-        )]),
+        "opts".to_string(),
+        ForthicValue::Array(vec![ForthicValue::WordOptions(WordOptions::new())]),
     );
     let err = serialize_value(&ForthicValue::Record(rec)).unwrap_err();
     assert_eq!(
         err.to_string(),
-        "Unsupported Forthic type: Time at path: .times[0]"
+        "Unsupported Forthic type: WordOptions at path: .opts[0]"
     );
+}
+
+#[test]
+fn test_malformed_plain_time_is_an_error() {
+    let wire = json!({ "plain_time_value": { "iso8601_time": "half past nine" } });
+    let err = deserialize_value(&wire).unwrap_err();
+    assert!(err.to_string().contains("Invalid plain time"), "got: {err}");
 }
 
 #[test]

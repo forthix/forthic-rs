@@ -40,8 +40,9 @@ ForthicValue mapping:
 | `Array` | `array_value` | `array_value` |
 | `Record` | `record_value` | `record_value` |
 | `Date` | `plain_date_value` | `plain_date_value` |
+| `Time` | `plain_time_value` (coordinated ts/rs extension, proto field 11) | `plain_time_value` |
 | `DateTime` | `zoned_datetime_value` (RFC3339 + tz name) | `zoned_datetime_value`; `instant_value` → `DateTime` in UTC |
-| `Time`, `WordOptions`, `StartArrayMarker` | serialization error (no wire type; ts has none for these either) | — |
+| `WordOptions`, `StartArrayMarker` | serialization error (interpreter-internal; never on the wire) | — |
 
 ## Design decisions
 
@@ -141,6 +142,21 @@ ForthicValue mapping:
 `src/jsonrpc/client.rs` mirroring ts `JsonRpcClient` (reqwest-based) — only needed
 when the Rust runtime wants to call *other* runtimes. Not required for the primary
 goal (rs as a callable runtime), so skip until there's a use case.
+
+## Follow-ups (after Phase 4)
+
+- **Thread code locations into interpreter errors.** Every ForthicError has
+  `location: Option<CodeLocation>` and every Token carries a CodeLocation,
+  but all ~10 interpreter error sites hardcode `location: None` (only the
+  tokenizer fills it — e.g. UnterminatedString). Consequence: the server's
+  `expose_error_details` option only ever yields `word_location` for
+  tokenizer errors; UnknownWord/StackUnderflow report no position. Fix:
+  `ForthicError::with_location(loc)` helper that fills the field if None,
+  applied at the token handlers (e.g.
+  `find_word(&token.string).map_err(|e| e.with_location(token.location.clone()))`).
+  Second, larger step: per-definition location tracking as in forthic-ts #30.
+- **plain_time for other runtimes** if/when python/ruby servers exist
+  (proto field 11 is the contract; ts #36 / rs commit are the references).
 
 ## Out of scope
 
