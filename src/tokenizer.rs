@@ -57,6 +57,11 @@ pub struct Tokenizer {
     line: usize,
     column: usize,
     input_string: String,
+    /// The input as chars. ALL positions in this tokenizer (input_pos,
+    /// token_start_pos, CodeLocation start/end) are CHAR indexes into this
+    /// vec, never byte offsets into input_string — mixing the two panics or
+    /// misbehaves on multibyte UTF-8.
+    chars: Vec<char>,
     input_pos: usize,
     whitespace: Vec<char>,
     quote_chars: Vec<char>,
@@ -84,11 +89,15 @@ impl Tokenizer {
         let line = reference_location.line;
         let column = reference_location.column;
 
+        let input_string = Self::unescape_string(&string);
+        let chars = input_string.chars().collect();
+
         Self {
             reference_location: reference_location.clone(),
             line,
             column,
-            input_string: Self::unescape_string(&string),
+            input_string,
+            chars,
             input_pos: 0,
             whitespace: vec![' ', '\t', '\n', '\r', '(', ')', ','],
             quote_chars: vec!['"', '\'', '^'],
@@ -139,27 +148,20 @@ impl Tokenizer {
         if !self.is_quote(ch) {
             return false;
         }
-        if index + 2 >= self.input_string.len() {
-            return false;
-        }
-        let chars: Vec<char> = self.input_string.chars().collect();
-        chars[index + 1] == ch && chars[index + 2] == ch
+        // .get() handles the bounds; the old code checked index against the
+        // BYTE length and then indexed the chars vec, which panics on
+        // multibyte input
+        self.chars.get(index + 1) == Some(&ch) && self.chars.get(index + 2) == Some(&ch)
     }
 
     fn is_start_memo(&self, index: usize) -> bool {
-        if index + 1 >= self.input_string.len() {
-            return false;
-        }
-        let chars: Vec<char> = self.input_string.chars().collect();
-        chars[index] == '@' && chars[index + 1] == ':'
+        self.chars.get(index) == Some(&'@') && self.chars.get(index + 1) == Some(&':')
     }
 
     fn advance_position(&mut self, num_chars: isize) -> Result<usize, ForthicError> {
-        let chars: Vec<char> = self.input_string.chars().collect();
-
         if num_chars >= 0 {
             for _ in 0..num_chars {
-                if self.input_pos < chars.len() && chars[self.input_pos] == '\n' {
+                if self.chars.get(self.input_pos) == Some(&'\n') {
                     self.line += 1;
                     self.column = 1;
                 } else {
@@ -178,7 +180,7 @@ impl Tokenizer {
                     }
                 })?;
 
-                if self.input_pos < chars.len() && chars[self.input_pos] == '\n' {
+                if self.chars.get(self.input_pos) == Some(&'\n') {
                     self.line = self.line.saturating_sub(1);
                     self.column = 1;
                 } else {
@@ -195,18 +197,19 @@ impl Tokenizer {
             line: self.token_line,
             column: self.token_column,
             start_pos: self.token_start_pos,
-            end_pos: Some(self.token_start_pos + self.token_string.len()),
+            // Char count, not byte length: positions are char indexes
+            end_pos: Some(self.token_start_pos + self.token_string.chars().count()),
         }
     }
 
     fn get_char_at(&self, index: usize) -> Option<char> {
-        self.input_string.chars().nth(index)
+        self.chars.get(index).copied()
     }
 
     // State transitions
 
     fn transition_from_start(&mut self) -> Result<Token, ForthicError> {
-        while self.input_pos < self.input_string.len() {
+        while self.input_pos < self.chars.len() {
             let ch = self.get_char_at(self.input_pos).unwrap();
             self.note_start_token();
             self.advance_position(1)?;
@@ -273,7 +276,7 @@ impl Tokenizer {
 
     fn transition_from_comment(&mut self) -> Result<Token, ForthicError> {
         self.note_start_token();
-        while self.input_pos < self.input_string.len() {
+        while self.input_pos < self.chars.len() {
             let ch = self.get_char_at(self.input_pos).unwrap();
             self.token_string.push(ch);
             self.advance_position(1)?;
@@ -290,7 +293,7 @@ impl Tokenizer {
     }
 
     fn transition_from_start_definition(&mut self) -> Result<Token, ForthicError> {
-        while self.input_pos < self.input_string.len() {
+        while self.input_pos < self.chars.len() {
             let ch = self.get_char_at(self.input_pos).unwrap();
             self.advance_position(1)?;
 
@@ -318,7 +321,7 @@ impl Tokenizer {
     }
 
     fn transition_from_start_memo(&mut self) -> Result<Token, ForthicError> {
-        while self.input_pos < self.input_string.len() {
+        while self.input_pos < self.chars.len() {
             let ch = self.get_char_at(self.input_pos).unwrap();
             self.advance_position(1)?;
 
@@ -346,7 +349,7 @@ impl Tokenizer {
     }
 
     fn gather_definition_name(&mut self) -> Result<(), ForthicError> {
-        while self.input_pos < self.input_string.len() {
+        while self.input_pos < self.chars.len() {
             let ch = self.get_char_at(self.input_pos).unwrap();
             self.advance_position(1)?;
 
@@ -396,7 +399,7 @@ impl Tokenizer {
 
     fn transition_from_gather_module(&mut self) -> Result<Token, ForthicError> {
         self.note_start_token();
-        while self.input_pos < self.input_string.len() {
+        while self.input_pos < self.chars.len() {
             let ch = self.get_char_at(self.input_pos).unwrap();
             self.advance_position(1)?;
 
@@ -426,12 +429,12 @@ impl Tokenizer {
             end: self.input_pos,
         });
 
-        while self.input_pos < self.input_string.len() {
+        while self.input_pos < self.chars.len() {
             let ch = self.get_char_at(self.input_pos).unwrap();
 
             if ch == delim && self.is_triple_quote(self.input_pos, ch) {
                 // Check if this triple quote is followed by at least one more quote (greedy mode)
-                if self.input_pos + 3 < self.input_string.len()
+                if self.input_pos + 3 < self.chars.len()
                     && self.get_char_at(self.input_pos + 3) == Some(delim)
                 {
                     // Greedy mode: include this quote as content and continue
@@ -483,7 +486,7 @@ impl Tokenizer {
             end: self.input_pos,
         });
 
-        while self.input_pos < self.input_string.len() {
+        while self.input_pos < self.chars.len() {
             let ch = self.get_char_at(self.input_pos).unwrap();
             self.advance_position(1)?;
 
@@ -519,7 +522,7 @@ impl Tokenizer {
 
     fn transition_from_gather_word(&mut self) -> Result<Token, ForthicError> {
         self.note_start_token();
-        while self.input_pos < self.input_string.len() {
+        while self.input_pos < self.chars.len() {
             let ch = self.get_char_at(self.input_pos).unwrap();
             self.advance_position(1)?;
 
@@ -533,7 +536,7 @@ impl Tokenizer {
             if ch == '[' && self.token_string.contains('T') {
                 self.token_string.push(ch);
                 // Continue gathering until closing bracket
-                while self.input_pos < self.input_string.len() {
+                while self.input_pos < self.chars.len() {
                     let ch2 = self.get_char_at(self.input_pos).unwrap();
                     self.advance_position(1)?;
                     self.token_string.push(ch2);
@@ -559,7 +562,7 @@ impl Tokenizer {
         self.note_start_token();
         let mut full_token_string = String::new();
 
-        while self.input_pos < self.input_string.len() {
+        while self.input_pos < self.chars.len() {
             let ch = self.get_char_at(self.input_pos).unwrap();
             self.advance_position(1)?;
 
@@ -575,7 +578,7 @@ impl Tokenizer {
         }
 
         // If dot symbol has no characters after the dot, treat it as a word
-        if full_token_string.len() < 2 {
+        if full_token_string.chars().count() < 2 {
             return Ok(Token::new(
                 TokenType::Word,
                 full_token_string,
@@ -583,7 +586,8 @@ impl Tokenizer {
             ));
         }
 
-        // For DOT_SYMBOL, return the string without the dot prefix
+        // For DOT_SYMBOL, return the string without the dot prefix (the
+        // leading '.' is ASCII, so the byte slice at 1 is a char boundary)
         let symbol_without_dot = full_token_string[1..].to_string();
         Ok(Token::new(
             TokenType::DotSymbol,

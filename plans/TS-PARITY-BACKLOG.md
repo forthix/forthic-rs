@@ -66,7 +66,7 @@ the spec for anything ported.
     ~hundreds of bytes on the happy path too (clippy: result_large_err,
     allowed at crate level for now). Standard fix: box the big fields or the
     whole error. Mechanical but touches every error site.
-12. **Tokenizer mixes byte and char indices** (`tokenizer.rs:142-151`
+12. **DONE — Tokenizer mixes byte and char indices** (`tokenizer.rs:142-151`
     and around): `input_string.len()` (bytes) vs `chars().nth` — can
     misbehave or index out of bounds on multibyte UTF-8 input. Deserves a
     dedicated robustness pass with UTF-8 tests.
