@@ -216,6 +216,70 @@ pub enum ForthicError {
 }
 
 impl ForthicError {
+    /// Fill in a code location if the error doesn't already carry one.
+    /// For WordExecution this fills `call_location` (where the definition
+    /// was invoked); IntentionalStop has no location and passes through.
+    /// An existing location always wins — inner errors keep their more
+    /// precise positions as they propagate outward.
+    pub fn with_location(mut self, loc: Option<CodeLocation>) -> Self {
+        if loc.is_none() {
+            return self;
+        }
+        match &mut self {
+            Self::UnknownWord { location, .. }
+            | Self::MissingSemicolon { location, .. }
+            | Self::ExtraSemicolon { location, .. }
+            | Self::StackUnderflow { location, .. }
+            | Self::InvalidVariableName { location, .. }
+            | Self::UnknownModule { location, .. }
+            | Self::InvalidInputPosition { location, .. }
+            | Self::InvalidWordName { location, .. }
+            | Self::UnterminatedString { location, .. }
+            | Self::UnknownToken { location, .. }
+            | Self::Module { location, .. }
+            | Self::TooManyAttempts { location, .. }
+            | Self::InvalidOperation { location, .. } => {
+                if location.is_none() {
+                    *location = loc;
+                }
+            }
+            Self::WordExecution { call_location, .. } => {
+                if call_location.is_none() {
+                    *call_location = loc;
+                }
+            }
+            Self::IntentionalStop { .. } => {}
+        }
+        self
+    }
+
+    /// Fill in the Forthic source snippet if the error doesn't carry one,
+    /// so format_with_context can render the code with a caret. An existing
+    /// non-empty snippet wins (nested runs keep their own source).
+    pub fn with_forthic(mut self, code: &str) -> Self {
+        match &mut self {
+            Self::UnknownWord { forthic, .. }
+            | Self::MissingSemicolon { forthic, .. }
+            | Self::ExtraSemicolon { forthic, .. }
+            | Self::StackUnderflow { forthic, .. }
+            | Self::InvalidVariableName { forthic, .. }
+            | Self::UnknownModule { forthic, .. }
+            | Self::InvalidInputPosition { forthic, .. }
+            | Self::InvalidWordName { forthic, .. }
+            | Self::UnterminatedString { forthic, .. }
+            | Self::UnknownToken { forthic, .. }
+            | Self::Module { forthic, .. }
+            | Self::TooManyAttempts { forthic, .. }
+            | Self::InvalidOperation { forthic, .. } => {
+                if forthic.is_empty() {
+                    *forthic = code.to_string();
+                }
+            }
+            Self::WordExecution { .. } | Self::IntentionalStop { .. } => {}
+        }
+        self
+    }
+
     /// Get the Forthic code associated with this error
     pub fn get_forthic(&self) -> Option<&str> {
         match self {

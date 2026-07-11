@@ -149,7 +149,7 @@ goal (rs as a callable runtime), so skip until there's a use case.
 
 ## Follow-ups (after Phase 4)
 
-- **Thread code locations into interpreter errors.** Every ForthicError has
+- **DONE (word-locations branch): Thread code locations into interpreter errors.** Every ForthicError has
   `location: Option<CodeLocation>` and every Token carries a CodeLocation,
   but all ~10 interpreter error sites hardcode `location: None` (only the
   tokenizer fills it — e.g. UnterminatedString). Consequence: the server's

@@ -148,7 +148,6 @@ fn test_multibyte_token_end_pos_is_char_count() {
 fn test_error_caret_lines_up_for_multibyte_source() {
     // Tokenizer errors carry locations; with char-based positions the
     // caret underline stays finite and aligned after multibyte content.
-    // (Interpreter errors like UnknownWord have no location yet — Tier 4.)
     let mut interp = Interpreter::standard("UTC");
     let err = interp.run("'日本' 'unterminated").unwrap_err();
     let formatted = err.format_with_context();

@@ -263,35 +263,45 @@ fn test_get_module_info_param_validation() {
 
 // ===== Error-detail sanitization =====
 
-// Tokenizer errors are the ones that carry code locations (interpreter
-// errors currently don't), so an unterminated string is the probe: the
-// stripped-by-default test would pass vacuously on a location-less error.
+// Both tokenizer errors (unterminated string) and interpreter errors
+// (unknown word — located since the word-locations work) are probed, so
+// stripping is verified against errors that genuinely have something to
+// strip.
 
 #[test]
 fn test_error_details_stripped_by_default() {
-    let response = rpc(
-        "executeWord",
-        json!({ "word_name": "'unterminated", "stack": [] }),
-    );
-    let data = &error_of(&response)["data"];
-    assert_eq!(data["error_type"], "UnterminatedString");
-    assert!(data.get("word_location").is_none());
-    assert!(data.get("stack_trace").is_none());
+    for word_name in ["'unterminated", "NO-SUCH-WORD"] {
+        let response = rpc(
+            "executeWord",
+            json!({ "word_name": word_name, "stack": [] }),
+        );
+        let data = &error_of(&response)["data"];
+        assert!(
+            data.get("word_location").is_none(),
+            "stripped for {word_name}: {data}"
+        );
+        assert!(data.get("stack_trace").is_none());
+    }
 }
 
 #[test]
 fn test_error_details_exposed_on_request() {
-    let response = rpc_with_options(
-        "executeWord",
-        json!({ "word_name": "'unterminated", "stack": [] }),
-        true,
-    );
-    let data = &error_of(&response)["data"];
-    assert_eq!(data["error_type"], "UnterminatedString");
-    assert!(
-        data.get("word_location").and_then(Value::as_str).is_some(),
-        "expected word_location in {data}"
-    );
+    for (word_name, error_type) in [
+        ("'unterminated", "UnterminatedString"),
+        ("NO-SUCH-WORD", "UnknownWord"),
+    ] {
+        let response = rpc_with_options(
+            "executeWord",
+            json!({ "word_name": word_name, "stack": [] }),
+            true,
+        );
+        let data = &error_of(&response)["data"];
+        assert_eq!(data["error_type"], error_type);
+        assert!(
+            data.get("word_location").and_then(Value::as_str).is_some(),
+            "expected word_location for {word_name} in {data}"
+        );
+    }
 }
 
 // ===== Round-trip through execution =====

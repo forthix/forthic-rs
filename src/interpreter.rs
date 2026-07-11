@@ -17,7 +17,7 @@
 //! // interp.run("42 3.14 'hello'").unwrap();
 //! ```
 
-use crate::errors::ForthicError;
+use crate::errors::{CodeLocation, ForthicError};
 use crate::literals::{to_bool, to_float, to_int, to_literal_date, to_time, to_zoned_datetime};
 use crate::literals::{ForthicValue, LiteralHandler};
 use crate::module::{DefinitionWord, InterpreterContext, Module, PushValueWord, Word};
@@ -641,7 +641,7 @@ impl Interpreter {
             "<string>".to_string(),
             ForthicValue::String(token.string.clone()),
         );
-        self.handle_word(Arc::new(word))
+        self.handle_word(Arc::new(word), Some(token.location))
     }
 
     /// Handle dot-symbol tokens (.foo)
@@ -650,22 +650,22 @@ impl Interpreter {
             "<dot-symbol>".to_string(),
             ForthicValue::String(token.string.clone()),
         );
-        self.handle_word(Arc::new(word))
+        self.handle_word(Arc::new(word), Some(token.location))
     }
 
     /// Handle start array tokens [
-    fn handle_start_array_token(&mut self, _token: Token) -> Result<(), ForthicError> {
+    fn handle_start_array_token(&mut self, token: Token) -> Result<(), ForthicError> {
         let word = PushValueWord::new(
             "<start_array_token>".to_string(),
             ForthicValue::StartArrayMarker,
         );
-        self.handle_word(Arc::new(word))
+        self.handle_word(Arc::new(word), Some(token.location))
     }
 
     /// Handle end array tokens ]
-    fn handle_end_array_token(&mut self, _token: Token) -> Result<(), ForthicError> {
+    fn handle_end_array_token(&mut self, token: Token) -> Result<(), ForthicError> {
         let word = Arc::new(EndArrayWord::new());
-        self.handle_word(word)
+        self.handle_word(word, Some(token.location))
     }
 
     /// Handle start module tokens
@@ -678,27 +678,29 @@ impl Interpreter {
         // If compiling, add to definition
         if self.is_compiling {
             if let Some(def) = &mut self.cur_definition {
-                def.add_word(word.clone());
+                def.add_word(word.clone(), Some(token.location.clone()));
             }
         }
 
         // Always execute (IMMEDIATE word)
         word.execute(self)
+            .map_err(|e| e.with_location(Some(token.location)))
     }
 
     /// Handle end module tokens }
-    fn handle_end_module_token(&mut self, _token: Token) -> Result<(), ForthicError> {
+    fn handle_end_module_token(&mut self, token: Token) -> Result<(), ForthicError> {
         let word = Arc::new(EndModuleWord::new());
 
         // If compiling, add to definition
         if self.is_compiling {
             if let Some(def) = &mut self.cur_definition {
-                def.add_word(word.clone());
+                def.add_word(word.clone(), Some(token.location.clone()));
             }
         }
 
         // Always execute (IMMEDIATE word)
         word.execute(self)
+            .map_err(|e| e.with_location(Some(token.location)))
     }
 
     /// Handle start definition tokens :
@@ -706,7 +708,7 @@ impl Interpreter {
         if self.is_compiling {
             return Err(ForthicError::MissingSemicolon {
                 forthic: String::new(),
-                location: None,
+                location: Some(token.location),
                 cause: None,
             });
         }
@@ -722,7 +724,7 @@ impl Interpreter {
         if self.is_compiling {
             return Err(ForthicError::MissingSemicolon {
                 forthic: String::new(),
-                location: None,
+                location: Some(token.location),
                 cause: None,
             });
         }
@@ -734,11 +736,11 @@ impl Interpreter {
     }
 
     /// Handle end definition tokens ;
-    fn handle_end_definition_token(&mut self, _token: Token) -> Result<(), ForthicError> {
+    fn handle_end_definition_token(&mut self, token: Token) -> Result<(), ForthicError> {
         if !self.is_compiling || self.cur_definition.is_none() {
             return Err(ForthicError::ExtraSemicolon {
                 forthic: String::new(),
-                location: None,
+                location: Some(token.location),
                 cause: None,
             });
         }
@@ -758,16 +760,18 @@ impl Interpreter {
 
     /// Handle word tokens (identifiers)
     fn handle_word_token(&mut self, token: Token) -> Result<(), ForthicError> {
-        let word = self.find_word(&token.string)?;
-        self.handle_word(word)
+        let word = self
+            .find_word(&token.string)
+            .map_err(|e| e.with_location(Some(token.location.clone())))?;
+        self.handle_word(word, Some(token.location))
     }
 
     /// Handle end-of-stream tokens
-    fn handle_eos_token(&mut self, _token: Token) -> Result<(), ForthicError> {
+    fn handle_eos_token(&mut self, token: Token) -> Result<(), ForthicError> {
         if self.is_compiling {
             return Err(ForthicError::MissingSemicolon {
                 forthic: String::new(),
-                location: None,
+                location: Some(token.location),
                 cause: None,
             });
         }
@@ -782,16 +786,23 @@ impl Interpreter {
 
     /// Execute or compile a word
     ///
-    /// If compiling, adds word to current definition.
-    /// Otherwise, executes the word immediately.
-    fn handle_word(&mut self, word: Arc<dyn Word>) -> Result<(), ForthicError> {
+    /// If compiling, adds word to the current definition together with its
+    /// call-site location (recorded on the definition, parallel to its
+    /// words — never on the shared Word object). Otherwise executes the word
+    /// immediately, stamping any error that lacks a location with the
+    /// call site.
+    fn handle_word(
+        &mut self,
+        word: Arc<dyn Word>,
+        location: Option<CodeLocation>,
+    ) -> Result<(), ForthicError> {
         if self.is_compiling {
             if let Some(def) = &mut self.cur_definition {
-                def.add_word(word);
+                def.add_word(word, location);
             }
             Ok(())
         } else {
-            word.execute(self)
+            word.execute(self).map_err(|e| e.with_location(location))
         }
     }
 
@@ -822,7 +833,10 @@ impl Interpreter {
         let result = self.run_with_tokenizer();
 
         self.tokenizer_stack.pop();
-        result
+        // Attach this run's source to errors that lack a snippet, so
+        // format_with_context can render the code with a caret (nested runs
+        // keep their own source — with_forthic only fills empty fields)
+        result.map_err(|e| e.with_forthic(code))
     }
 
     /// Execute tokens from the current tokenizer
