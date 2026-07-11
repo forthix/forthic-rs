@@ -12,9 +12,8 @@ repository = "https://github.com/forthic/forthic-rs"
 thiserror = "1.0"
 anyhow = "1.0"
 
-# Async runtime
-tokio = { version = "1", features = ["full"] }
-async-trait = "0.1"
+# The interpreter is deliberately synchronous (see plans/JSONRPC-PLAN.md).
+# tokio enters only via the `jsonrpc` feature when the server lands.
 
 # Date/time
 chrono = "0.4"
@@ -37,7 +36,6 @@ colored = { version = "2", optional = true }
 
 [dev-dependencies]
 # Testing
-tokio-test = "0.4"
 proptest = "1.0"
 
 [features]

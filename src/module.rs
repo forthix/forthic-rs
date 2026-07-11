@@ -143,10 +143,12 @@ pub trait Word: Send + Sync {
         // Default implementation does nothing - override in concrete types if needed
     }
 
-    /// Execute the word (will be async in full implementation)
+    /// Execute the word
     ///
-    /// Note: For Phase 3, we'll use a simplified synchronous version.
-    /// The full interpreter in Phase 4 will make this async.
+    /// Execution is deliberately synchronous: words that need I/O should use
+    /// blocking clients (or bridge to async services themselves). Async is
+    /// confined to transport edges like the JSON-RPC server, which runs the
+    /// interpreter on blocking threads.
     fn execute(&self, context: &mut dyn InterpreterContext) -> Result<(), ForthicError>;
 
     /// Check if this word is a memo word
