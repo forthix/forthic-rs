@@ -181,7 +181,8 @@ impl CoreModule {
                 }
 
                 // Get value
-                cur_module.get_variable(&varname)
+                cur_module
+                    .get_variable(&varname)
                     .map(|var| var.get_value().clone())
                     .unwrap_or(ForthicValue::Null)
             };

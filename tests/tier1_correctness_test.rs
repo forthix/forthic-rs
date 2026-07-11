@@ -37,7 +37,10 @@ fn test_formatter_survives_degenerate_location() {
         cause: None,
     };
     let formatted = err.format_with_context();
-    assert!(formatted.contains("^"), "still renders a caret: {formatted}");
+    assert!(
+        formatted.contains("^"),
+        "still renders a caret: {formatted}"
+    );
 }
 
 #[test]
@@ -83,7 +86,9 @@ fn test_datetime_equality_requires_same_timezone() {
     // ts compares Temporal values by ISO string (includes the tz
     // annotation): the same instant in different timezones is NOT equal
     let la: chrono_tz::Tz = "America/Los_Angeles".parse().unwrap();
-    let instant_utc = chrono_tz::UTC.with_ymd_and_hms(2020, 6, 5, 17, 15, 0).unwrap();
+    let instant_utc = chrono_tz::UTC
+        .with_ymd_and_hms(2020, 6, 5, 17, 15, 0)
+        .unwrap();
     let same_instant_la = instant_utc.with_timezone(&la);
 
     let mut interp = Interpreter::standard("UTC");

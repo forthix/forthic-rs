@@ -114,7 +114,9 @@ impl ArrayModule {
                 if n < 0 || n >= keys.len() as i64 {
                     ForthicValue::Null
                 } else {
-                    rec.get(&keys[n as usize]).cloned().unwrap_or(ForthicValue::Null)
+                    rec.get(&keys[n as usize])
+                        .cloned()
+                        .unwrap_or(ForthicValue::Null)
                 }
             }
             _ => ForthicValue::Null,
@@ -141,7 +143,9 @@ impl ArrayModule {
                 if keys.is_empty() {
                     ForthicValue::Null
                 } else {
-                    rec.get(&keys[keys.len() - 1]).cloned().unwrap_or(ForthicValue::Null)
+                    rec.get(&keys[keys.len() - 1])
+                        .cloned()
+                        .unwrap_or(ForthicValue::Null)
                 }
             }
             _ => ForthicValue::Null,
@@ -367,11 +371,17 @@ impl ArrayModule {
         module.add_exportable_word(word);
 
         // DIFFERENCE
-        let word = Arc::new(ModuleWord::new("DIFFERENCE".to_string(), Self::word_difference));
+        let word = Arc::new(ModuleWord::new(
+            "DIFFERENCE".to_string(),
+            Self::word_difference,
+        ));
         module.add_exportable_word(word);
 
         // INTERSECTION
-        let word = Arc::new(ModuleWord::new("INTERSECTION".to_string(), Self::word_intersection));
+        let word = Arc::new(ModuleWord::new(
+            "INTERSECTION".to_string(),
+            Self::word_intersection,
+        ));
         module.add_exportable_word(word);
 
         // UNION

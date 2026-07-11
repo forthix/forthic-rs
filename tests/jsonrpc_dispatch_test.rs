@@ -14,9 +14,10 @@ fn rpc(method: &str, params: Value) -> Value {
 
 fn rpc_with_options(method: &str, params: Value, expose_error_details: bool) -> Value {
     let servicer = ForthicJsonRpcServicer::new();
-    let request: JsonRpcRequest =
-        serde_json::from_value(json!({ "jsonrpc": "2.0", "id": 7, "method": method, "params": params }))
-            .expect("request parses");
+    let request: JsonRpcRequest = serde_json::from_value(
+        json!({ "jsonrpc": "2.0", "id": 7, "method": method, "params": params }),
+    )
+    .expect("request parses");
     dispatch(&servicer, &request, expose_error_details)
 }
 
@@ -91,10 +92,22 @@ fn test_execute_word_reaches_standard_library() {
 #[test]
 fn test_execute_word_param_validation() {
     let cases = [
-        (json!({ "stack": [] }), "executeWord requires string \"word_name\""),
-        (json!({ "word_name": 42, "stack": [] }), "executeWord requires string \"word_name\""),
-        (json!({ "word_name": "DUP" }), "executeWord requires array \"stack\""),
-        (json!({ "word_name": "DUP", "stack": "nope" }), "executeWord requires array \"stack\""),
+        (
+            json!({ "stack": [] }),
+            "executeWord requires string \"word_name\"",
+        ),
+        (
+            json!({ "word_name": 42, "stack": [] }),
+            "executeWord requires string \"word_name\"",
+        ),
+        (
+            json!({ "word_name": "DUP" }),
+            "executeWord requires array \"stack\"",
+        ),
+        (
+            json!({ "word_name": "DUP", "stack": "nope" }),
+            "executeWord requires array \"stack\"",
+        ),
         (json!(null), "executeWord requires string \"word_name\""),
     ];
     for (params, expected_message) in cases {
@@ -107,7 +120,10 @@ fn test_execute_word_param_validation() {
 
 #[test]
 fn test_execute_word_unknown_word_is_runtime_error() {
-    let response = rpc("executeWord", json!({ "word_name": "NO-SUCH-WORD", "stack": [] }));
+    let response = rpc(
+        "executeWord",
+        json!({ "word_name": "NO-SUCH-WORD", "stack": [] }),
+    );
     let error = error_of(&response);
     assert_eq!(error["code"], -32000);
     let data = &error["data"];
@@ -148,7 +164,10 @@ fn test_execute_word_unserializable_result_is_runtime_error() {
     assert_eq!(error["code"], -32000);
     assert_eq!(error["data"]["error_type"], "SerializerError");
     assert!(
-        error["message"].as_str().unwrap().contains("Unsupported Forthic type"),
+        error["message"]
+            .as_str()
+            .unwrap()
+            .contains("Unsupported Forthic type"),
         "got: {}",
         error["message"]
     );
@@ -174,10 +193,22 @@ fn test_execute_sequence_runs_words_in_order() {
 #[test]
 fn test_execute_sequence_param_validation() {
     let cases = [
-        (json!({ "stack": [] }), "executeSequence requires string[] \"word_names\""),
-        (json!({ "word_names": ["DUP", 5], "stack": [] }), "executeSequence requires string[] \"word_names\""),
-        (json!({ "word_names": "DUP", "stack": [] }), "executeSequence requires string[] \"word_names\""),
-        (json!({ "word_names": ["DUP"] }), "executeSequence requires array \"stack\""),
+        (
+            json!({ "stack": [] }),
+            "executeSequence requires string[] \"word_names\"",
+        ),
+        (
+            json!({ "word_names": ["DUP", 5], "stack": [] }),
+            "executeSequence requires string[] \"word_names\"",
+        ),
+        (
+            json!({ "word_names": "DUP", "stack": [] }),
+            "executeSequence requires string[] \"word_names\"",
+        ),
+        (
+            json!({ "word_names": ["DUP"] }),
+            "executeSequence requires array \"stack\"",
+        ),
     ];
     for (params, expected_message) in cases {
         let response = rpc("executeSequence", params.clone());
@@ -195,7 +226,10 @@ fn test_execute_sequence_error_carries_word_sequence_context() {
     );
     let error = error_of(&response);
     assert_eq!(error["code"], -32000);
-    assert_eq!(error["data"]["context"]["word_sequence"], "DUP, NO-SUCH-WORD");
+    assert_eq!(
+        error["data"]["context"]["word_sequence"],
+        "DUP, NO-SUCH-WORD"
+    );
     assert!(error["data"]["context"].get("word_name").is_none());
 }
 
@@ -221,7 +255,10 @@ fn test_get_module_info_param_validation() {
     let response = rpc("getModuleInfo", json!({}));
     let error = error_of(&response);
     assert_eq!(error["code"], -32602);
-    assert_eq!(error["message"], "getModuleInfo requires string \"module_name\"");
+    assert_eq!(
+        error["message"],
+        "getModuleInfo requires string \"module_name\""
+    );
 }
 
 // ===== Error-detail sanitization =====
@@ -232,7 +269,10 @@ fn test_get_module_info_param_validation() {
 
 #[test]
 fn test_error_details_stripped_by_default() {
-    let response = rpc("executeWord", json!({ "word_name": "'unterminated", "stack": [] }));
+    let response = rpc(
+        "executeWord",
+        json!({ "word_name": "'unterminated", "stack": [] }),
+    );
     let data = &error_of(&response)["data"];
     assert_eq!(data["error_type"], "UnterminatedString");
     assert!(data.get("word_location").is_none());
@@ -269,8 +309,5 @@ fn test_rich_values_round_trip_through_execution() {
         "executeWord",
         json!({ "word_name": "DUP", "stack": [ zoned ] }),
     );
-    assert_eq!(
-        response["result"]["result_stack"],
-        json!([ zoned, zoned ])
-    );
+    assert_eq!(response["result"]["result_stack"], json!([zoned, zoned]));
 }

@@ -163,7 +163,8 @@ impl JSONModule {
             }
             JsonValue::String(s) => ForthicValue::String(s.clone()),
             JsonValue::Array(arr) => {
-                let forthic_arr: Vec<ForthicValue> = arr.iter().map(Self::json_to_forthic).collect();
+                let forthic_arr: Vec<ForthicValue> =
+                    arr.iter().map(Self::json_to_forthic).collect();
                 ForthicValue::Array(forthic_arr)
             }
             JsonValue::Object(obj) => {

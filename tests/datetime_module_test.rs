@@ -1,7 +1,7 @@
-use forthic::literals::ForthicValue;
-use forthic::modules::standard::DateTimeModule;
-use forthic::module::{InterpreterContext, Module};
 use chrono::{Datelike, NaiveDate, NaiveTime, Timelike};
+use forthic::literals::ForthicValue;
+use forthic::module::{InterpreterContext, Module};
+use forthic::modules::standard::DateTimeModule;
 
 // Mock interpreter context for testing
 struct MockContext {
@@ -24,11 +24,13 @@ impl InterpreterContext for MockContext {
     }
 
     fn stack_pop(&mut self) -> Result<ForthicValue, forthic::ForthicError> {
-        self.stack.pop().ok_or(forthic::ForthicError::StackUnderflow {
-            forthic: "test".to_string(),
-            location: None,
-            cause: None,
-        })
+        self.stack
+            .pop()
+            .ok_or(forthic::ForthicError::StackUnderflow {
+                forthic: "test".to_string(),
+                location: None,
+                cause: None,
+            })
     }
 
     fn stack_peek(&self) -> Option<&ForthicValue> {
@@ -128,7 +130,8 @@ fn test_to_date_from_string() {
     let mut ctx = MockContext::new();
 
     let word = module.module().find_word(">DATE").unwrap();
-    ctx.stack.push(ForthicValue::String("2024-01-15".to_string()));
+    ctx.stack
+        .push(ForthicValue::String("2024-01-15".to_string()));
     word.execute(&mut ctx).unwrap();
 
     let result = ctx.stack.pop().unwrap();
@@ -184,7 +187,10 @@ fn test_time_to_str() {
     ctx.stack.push(ForthicValue::Time(time));
     word.execute(&mut ctx).unwrap();
 
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::String("14:30".to_string())));
+    assert_eq!(
+        ctx.stack.pop(),
+        Some(ForthicValue::String("14:30".to_string()))
+    );
 }
 
 #[test]
@@ -198,7 +204,10 @@ fn test_date_to_str() {
     ctx.stack.push(ForthicValue::Date(date));
     word.execute(&mut ctx).unwrap();
 
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::String("2024-01-15".to_string())));
+    assert_eq!(
+        ctx.stack.pop(),
+        Some(ForthicValue::String("2024-01-15".to_string()))
+    );
 }
 
 #[test]

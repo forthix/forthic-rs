@@ -267,11 +267,19 @@ fn parse_zoned_datetime(
         (Some(open), Some(close)) if close > open => (&iso[..open], &iso[open + 1..close]),
         _ => (iso, ""),
     };
-    let tz_name = if !tz_field.is_empty() { tz_field } else { bracket_tz };
+    let tz_name = if !tz_field.is_empty() {
+        tz_field
+    } else {
+        bracket_tz
+    };
     let tz: Tz = tz_name
         .parse()
         .map_err(|_| invalid(format!("Unknown timezone '{tz_name}'"), path))?;
-    let dt = chrono::DateTime::parse_from_rfc3339(datetime_part)
-        .map_err(|e| invalid(format!("Invalid zoned datetime '{datetime_part}': {e}"), path))?;
+    let dt = chrono::DateTime::parse_from_rfc3339(datetime_part).map_err(|e| {
+        invalid(
+            format!("Invalid zoned datetime '{datetime_part}': {e}"),
+            path,
+        )
+    })?;
     Ok(ForthicValue::DateTime(dt.with_timezone(&tz)))
 }

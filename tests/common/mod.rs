@@ -74,8 +74,7 @@ impl TestServer {
             .expect("request sends");
         let status = response.status();
         let text = response.text().await.expect("body reads");
-        let value = serde_json::from_str(&text)
-            .unwrap_or_else(|_| json!({ "_raw": text }));
+        let value = serde_json::from_str(&text).unwrap_or_else(|_| json!({ "_raw": text }));
         (status, value)
     }
 

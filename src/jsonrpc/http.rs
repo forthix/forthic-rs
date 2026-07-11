@@ -152,10 +152,7 @@ pub async fn serve(port: u16, options: ServeOptions) -> std::io::Result<ServerHa
     })
 }
 
-async fn rpc_handler(
-    State(ctx): State<Arc<ServerContext>>,
-    req: Request<Body>,
-) -> Response {
+async fn rpc_handler(State(ctx): State<Arc<ServerContext>>, req: Request<Body>) -> Response {
     // Authenticate before reading the body, so unauthorized callers can't
     // execute code or push a large payload.
     if !is_authorized(req.headers(), ctx.token.as_deref()) {

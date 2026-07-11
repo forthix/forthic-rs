@@ -296,7 +296,7 @@ pub fn to_zoned_datetime(default_timezone: &str) -> impl Fn(&str) -> Option<Fort
 
             // Handle Z suffix - convert to +00:00 for parsing
             let datetime_str = if datetime_str.ends_with('Z') {
-                format!("{}+00:00", &datetime_str[..datetime_str.len()-1])
+                format!("{}+00:00", &datetime_str[..datetime_str.len() - 1])
             } else {
                 datetime_str.to_string()
             };
@@ -309,8 +309,11 @@ pub fn to_zoned_datetime(default_timezone: &str) -> impl Fn(&str) -> Option<Fort
             }
 
             // Try simple format without offset - parse in the target timezone
-            if let Ok(naive_dt) = chrono::NaiveDateTime::parse_from_str(&datetime_str, "%Y-%m-%dT%H:%M:%S") {
-                return tz.from_local_datetime(&naive_dt)
+            if let Ok(naive_dt) =
+                chrono::NaiveDateTime::parse_from_str(&datetime_str, "%Y-%m-%dT%H:%M:%S")
+            {
+                return tz
+                    .from_local_datetime(&naive_dt)
                     .earliest()
                     .map(ForthicValue::DateTime);
             }

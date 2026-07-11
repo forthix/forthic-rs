@@ -62,9 +62,11 @@ impl Word for StartModuleWord {
             Some(m) => m.clone(),
             None => {
                 let new_module = Module::new(self.name.clone());
-                context
-                    .cur_module_mut()
-                    .register_module(self.name.clone(), self.name.clone(), new_module.clone());
+                context.cur_module_mut().register_module(
+                    self.name.clone(),
+                    self.name.clone(),
+                    new_module.clone(),
+                );
                 new_module
             }
         };
@@ -178,11 +180,13 @@ impl Stack {
     ///
     /// Returns an error if the stack is empty.
     pub fn pop(&mut self) -> Result<ForthicValue, ForthicError> {
-        self.items.pop().ok_or_else(|| ForthicError::StackUnderflow {
-            forthic: String::new(),
-            location: None,
-            cause: None,
-        })
+        self.items
+            .pop()
+            .ok_or_else(|| ForthicError::StackUnderflow {
+                forthic: String::new(),
+                location: None,
+                cause: None,
+            })
     }
 
     /// Peek at the top value without removing it
@@ -1244,9 +1248,7 @@ mod tests {
         // Custom handler for hex numbers
         fn to_hex(s: &str) -> Option<ForthicValue> {
             if s.starts_with("0x") || s.starts_with("0X") {
-                i64::from_str_radix(&s[2..], 16)
-                    .ok()
-                    .map(ForthicValue::Int)
+                i64::from_str_radix(&s[2..], 16).ok().map(ForthicValue::Int)
             } else {
                 None
             }
@@ -1290,7 +1292,10 @@ mod tests {
 
         // Check stack contents
         assert_eq!(interp.get_stack().len(), 4);
-        assert_eq!(interp.stack_pop().unwrap(), ForthicValue::String("hello".to_string()));
+        assert_eq!(
+            interp.stack_pop().unwrap(),
+            ForthicValue::String("hello".to_string())
+        );
         assert_eq!(interp.stack_pop().unwrap(), ForthicValue::Bool(true));
         assert_eq!(interp.stack_pop().unwrap(), ForthicValue::Float(3.14));
         assert_eq!(interp.stack_pop().unwrap(), ForthicValue::Int(42));
@@ -1446,10 +1451,8 @@ mod tests {
         let mut interp = Interpreter::new("UTC");
 
         // Create a module with code that defines a word
-        let module = Module::new_with_code(
-            "test_module".to_string(),
-            ": MODULE-WORD 99 ;".to_string(),
-        );
+        let module =
+            Module::new_with_code("test_module".to_string(), ": MODULE-WORD 99 ;".to_string());
 
         // Run the module's code
         interp.run_module_code(&module).unwrap();
@@ -1488,7 +1491,10 @@ mod tests {
 
         // Create and register a module
         let mut module = Module::new("my_module".to_string());
-        let word = Arc::new(PushValueWord::new("TEST_WORD".to_string(), ForthicValue::Int(42)));
+        let word = Arc::new(PushValueWord::new(
+            "TEST_WORD".to_string(),
+            ForthicValue::Int(42),
+        ));
         module.add_word(word);
 
         interp.register_module(module.clone());
@@ -1539,7 +1545,10 @@ mod tests {
 
         // Create a module with an exportable word
         let mut module = Module::new("math".to_string());
-        let word = Arc::new(PushValueWord::new("PI".to_string(), ForthicValue::Float(3.14)));
+        let word = Arc::new(PushValueWord::new(
+            "PI".to_string(),
+            ForthicValue::Float(3.14),
+        ));
         module.add_exportable_word(word);
 
         // Import without prefix
@@ -1557,7 +1566,10 @@ mod tests {
         let mut interp = Interpreter::new("UTC");
 
         let mut module = Module::new("math".to_string());
-        let word = Arc::new(PushValueWord::new("PI".to_string(), ForthicValue::Float(3.14)));
+        let word = Arc::new(PushValueWord::new(
+            "PI".to_string(),
+            ForthicValue::Float(3.14),
+        ));
         module.add_exportable_word(word);
         interp.import_module(module, "");
 
@@ -1584,7 +1596,10 @@ mod tests {
 
         // Create a module with an exportable word
         let mut module = Module::new("math".to_string());
-        let word = Arc::new(PushValueWord::new("PI".to_string(), ForthicValue::Float(3.14)));
+        let word = Arc::new(PushValueWord::new(
+            "PI".to_string(),
+            ForthicValue::Float(3.14),
+        ));
         module.add_exportable_word(word);
 
         // Import with prefix
@@ -1665,10 +1680,7 @@ mod tests {
 
         // Stack should be replaced
         assert_eq!(interp.get_stack().len(), 2);
-        assert_eq!(
-            interp.stack_pop().unwrap(),
-            ForthicValue::Bool(true)
-        );
+        assert_eq!(interp.stack_pop().unwrap(), ForthicValue::Bool(true));
         assert_eq!(
             interp.stack_pop().unwrap(),
             ForthicValue::String("hello".to_string())

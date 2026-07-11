@@ -1,6 +1,6 @@
 use forthic::literals::ForthicValue;
-use forthic::modules::standard::CoreModule;
 use forthic::module::{InterpreterContext, Module};
+use forthic::modules::standard::CoreModule;
 
 // Mock interpreter context for testing
 struct MockContext {
@@ -23,11 +23,13 @@ impl InterpreterContext for MockContext {
     }
 
     fn stack_pop(&mut self) -> Result<ForthicValue, forthic::ForthicError> {
-        self.stack.pop().ok_or(forthic::ForthicError::StackUnderflow {
-            forthic: "test".to_string(),
-            location: None,
-            cause: None,
-        })
+        self.stack
+            .pop()
+            .ok_or(forthic::ForthicError::StackUnderflow {
+                forthic: "test".to_string(),
+                location: None,
+                cause: None,
+            })
     }
 
     fn stack_peek(&self) -> Option<&ForthicValue> {
@@ -160,9 +162,10 @@ fn test_invalid_variable_name() {
     let mut ctx = MockContext::new();
 
     let word = module.module().find_word("VARIABLES").unwrap();
-    ctx.stack.push(ForthicValue::Array(vec![
-        ForthicValue::String("__invalid".to_string()),
-    ]));
+    ctx.stack
+        .push(ForthicValue::Array(vec![ForthicValue::String(
+            "__invalid".to_string(),
+        )]));
 
     let result = word.execute(&mut ctx);
     assert!(result.is_err());
@@ -270,7 +273,10 @@ fn test_default_with_empty_string() {
     ctx.stack.push(ForthicValue::String("default".to_string()));
     word.execute(&mut ctx).unwrap();
 
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::String("default".to_string())));
+    assert_eq!(
+        ctx.stack.pop(),
+        Some(ForthicValue::String("default".to_string()))
+    );
 }
 
 // Options Tests

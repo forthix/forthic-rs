@@ -1,6 +1,6 @@
 use forthic::literals::ForthicValue;
-use forthic::modules::standard::JSONModule;
 use forthic::module::{InterpreterContext, Module};
+use forthic::modules::standard::JSONModule;
 use std::collections::HashMap;
 
 // Mock interpreter context for testing
@@ -24,11 +24,13 @@ impl InterpreterContext for MockContext {
     }
 
     fn stack_pop(&mut self) -> Result<ForthicValue, forthic::ForthicError> {
-        self.stack.pop().ok_or(forthic::ForthicError::StackUnderflow {
-            forthic: "test".to_string(),
-            location: None,
-            cause: None,
-        })
+        self.stack
+            .pop()
+            .ok_or(forthic::ForthicError::StackUnderflow {
+                forthic: "test".to_string(),
+                location: None,
+                cause: None,
+            })
     }
 
     fn stack_peek(&self) -> Option<&ForthicValue> {
@@ -69,7 +71,10 @@ fn test_to_json_null() {
     ctx.stack.push(ForthicValue::Null);
     word.execute(&mut ctx).unwrap();
 
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::String("null".to_string())));
+    assert_eq!(
+        ctx.stack.pop(),
+        Some(ForthicValue::String("null".to_string()))
+    );
 }
 
 #[test]
@@ -81,7 +86,10 @@ fn test_to_json_bool() {
     ctx.stack.push(ForthicValue::Bool(true));
     word.execute(&mut ctx).unwrap();
 
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::String("true".to_string())));
+    assert_eq!(
+        ctx.stack.pop(),
+        Some(ForthicValue::String("true".to_string()))
+    );
 }
 
 #[test]
@@ -93,7 +101,10 @@ fn test_to_json_int() {
     ctx.stack.push(ForthicValue::Int(42));
     word.execute(&mut ctx).unwrap();
 
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::String("42".to_string())));
+    assert_eq!(
+        ctx.stack.pop(),
+        Some(ForthicValue::String("42".to_string()))
+    );
 }
 
 #[test]
@@ -105,7 +116,10 @@ fn test_to_json_float() {
     ctx.stack.push(ForthicValue::Float(3.14));
     word.execute(&mut ctx).unwrap();
 
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::String("3.14".to_string())));
+    assert_eq!(
+        ctx.stack.pop(),
+        Some(ForthicValue::String("3.14".to_string()))
+    );
 }
 
 #[test]
@@ -117,7 +131,10 @@ fn test_to_json_string() {
     ctx.stack.push(ForthicValue::String("hello".to_string()));
     word.execute(&mut ctx).unwrap();
 
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::String("\"hello\"".to_string())));
+    assert_eq!(
+        ctx.stack.pop(),
+        Some(ForthicValue::String("\"hello\"".to_string()))
+    );
 }
 
 #[test]
@@ -133,7 +150,10 @@ fn test_to_json_array() {
     ]));
     word.execute(&mut ctx).unwrap();
 
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::String("[1,2,3]".to_string())));
+    assert_eq!(
+        ctx.stack.pop(),
+        Some(ForthicValue::String("[1,2,3]".to_string()))
+    );
 }
 
 #[test]
@@ -142,7 +162,10 @@ fn test_to_json_record() {
     let mut ctx = MockContext::new();
 
     let mut rec = HashMap::new();
-    rec.insert("name".to_string(), ForthicValue::String("Alice".to_string()));
+    rec.insert(
+        "name".to_string(),
+        ForthicValue::String("Alice".to_string()),
+    );
     rec.insert("age".to_string(), ForthicValue::Int(30));
 
     let word = module.module().find_word(">JSON").unwrap();
@@ -213,10 +236,14 @@ fn test_from_json_string() {
     let mut ctx = MockContext::new();
 
     let word = module.module().find_word("JSON>").unwrap();
-    ctx.stack.push(ForthicValue::String("\"hello\"".to_string()));
+    ctx.stack
+        .push(ForthicValue::String("\"hello\"".to_string()));
     word.execute(&mut ctx).unwrap();
 
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::String("hello".to_string())));
+    assert_eq!(
+        ctx.stack.pop(),
+        Some(ForthicValue::String("hello".to_string()))
+    );
 }
 
 #[test]
@@ -245,12 +272,17 @@ fn test_from_json_object() {
     let mut ctx = MockContext::new();
 
     let word = module.module().find_word("JSON>").unwrap();
-    ctx.stack.push(ForthicValue::String("{\"name\":\"Alice\",\"age\":30}".to_string()));
+    ctx.stack.push(ForthicValue::String(
+        "{\"name\":\"Alice\",\"age\":30}".to_string(),
+    ));
     word.execute(&mut ctx).unwrap();
 
     let result = ctx.stack.pop().unwrap();
     if let ForthicValue::Record(rec) = result {
-        assert_eq!(rec.get("name"), Some(&ForthicValue::String("Alice".to_string())));
+        assert_eq!(
+            rec.get("name"),
+            Some(&ForthicValue::String("Alice".to_string()))
+        );
         assert_eq!(rec.get("age"), Some(&ForthicValue::Int(30)));
     } else {
         panic!("Expected record");
@@ -275,7 +307,8 @@ fn test_from_json_invalid() {
     let mut ctx = MockContext::new();
 
     let word = module.module().find_word("JSON>").unwrap();
-    ctx.stack.push(ForthicValue::String("{invalid}".to_string()));
+    ctx.stack
+        .push(ForthicValue::String("{invalid}".to_string()));
     word.execute(&mut ctx).unwrap();
 
     assert_eq!(ctx.stack.pop(), Some(ForthicValue::Null));
@@ -289,7 +322,8 @@ fn test_json_prettify() {
     let mut ctx = MockContext::new();
 
     let word = module.module().find_word("JSON-PRETTIFY").unwrap();
-    ctx.stack.push(ForthicValue::String("{\"a\":1,\"b\":2}".to_string()));
+    ctx.stack
+        .push(ForthicValue::String("{\"a\":1,\"b\":2}".to_string()));
     word.execute(&mut ctx).unwrap();
 
     let result = ctx.stack.pop().unwrap();
@@ -324,11 +358,14 @@ fn test_roundtrip_complex_structure() {
     // Create complex structure
     let mut rec = HashMap::new();
     rec.insert("name".to_string(), ForthicValue::String("Bob".to_string()));
-    rec.insert("scores".to_string(), ForthicValue::Array(vec![
-        ForthicValue::Int(85),
-        ForthicValue::Int(92),
-        ForthicValue::Int(78),
-    ]));
+    rec.insert(
+        "scores".to_string(),
+        ForthicValue::Array(vec![
+            ForthicValue::Int(85),
+            ForthicValue::Int(92),
+            ForthicValue::Int(78),
+        ]),
+    );
 
     // Convert to JSON
     let to_json = module.module().find_word(">JSON").unwrap();
@@ -342,7 +379,10 @@ fn test_roundtrip_complex_structure() {
     // Verify
     let result = ctx.stack.pop().unwrap();
     if let ForthicValue::Record(result_rec) = result {
-        assert_eq!(result_rec.get("name"), Some(&ForthicValue::String("Bob".to_string())));
+        assert_eq!(
+            result_rec.get("name"),
+            Some(&ForthicValue::String("Bob".to_string()))
+        );
         if let Some(ForthicValue::Array(scores)) = result_rec.get("scores") {
             assert_eq!(scores.len(), 3);
             assert_eq!(scores[0], ForthicValue::Int(85));

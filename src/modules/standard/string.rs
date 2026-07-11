@@ -52,11 +52,17 @@ impl StringModule {
         module.add_exportable_word(word);
 
         // URL-ENCODE
-        let word = Arc::new(ModuleWord::new("URL-ENCODE".to_string(), Self::word_url_encode));
+        let word = Arc::new(ModuleWord::new(
+            "URL-ENCODE".to_string(),
+            Self::word_url_encode,
+        ));
         module.add_exportable_word(word);
 
         // URL-DECODE
-        let word = Arc::new(ModuleWord::new("URL-DECODE".to_string(), Self::word_url_decode));
+        let word = Arc::new(ModuleWord::new(
+            "URL-DECODE".to_string(),
+            Self::word_url_decode,
+        ));
         module.add_exportable_word(word);
     }
 
@@ -110,11 +116,17 @@ impl StringModule {
 
     fn register_transform_words(module: &mut Module) {
         // LOWERCASE
-        let word = Arc::new(ModuleWord::new("LOWERCASE".to_string(), Self::word_lowercase));
+        let word = Arc::new(ModuleWord::new(
+            "LOWERCASE".to_string(),
+            Self::word_lowercase,
+        ));
         module.add_exportable_word(word);
 
         // UPPERCASE
-        let word = Arc::new(ModuleWord::new("UPPERCASE".to_string(), Self::word_uppercase));
+        let word = Arc::new(ModuleWord::new(
+            "UPPERCASE".to_string(),
+            Self::word_uppercase,
+        ));
         module.add_exportable_word(word);
 
         // STRIP
@@ -296,7 +308,10 @@ impl StringModule {
         module.add_exportable_word(word);
 
         // /R - carriage return
-        let word = Arc::new(ModuleWord::new("/R".to_string(), Self::word_carriage_return));
+        let word = Arc::new(ModuleWord::new(
+            "/R".to_string(),
+            Self::word_carriage_return,
+        ));
         module.add_exportable_word(word);
 
         // /T - tab

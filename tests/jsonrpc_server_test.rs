@@ -52,7 +52,10 @@ async fn test_execute_sequence_over_http() {
         )
         .await;
     assert_eq!(status, 200);
-    assert_eq!(body["result"]["result_stack"], json!([ { "int_value": 42 } ]));
+    assert_eq!(
+        body["result"]["result_stack"],
+        json!([ { "int_value": 42 } ])
+    );
     server.stop().await;
 }
 
@@ -81,7 +84,10 @@ async fn test_rich_types_over_http() {
 async fn test_unknown_word_runtime_error_shape() {
     let server = TestServer::start(ServeOptions::default()).await;
     let (status, body) = server
-        .rpc("executeWord", json!({ "word_name": "NO-SUCH-WORD", "stack": [] }))
+        .rpc(
+            "executeWord",
+            json!({ "word_name": "NO-SUCH-WORD", "stack": [] }),
+        )
         .await;
     // Protocol-level errors ride HTTP 200; the error lives in the envelope
     assert_eq!(status, 200);
@@ -109,7 +115,9 @@ async fn test_invalid_params_and_unknown_method() {
     assert_eq!(body["error"]["code"], -32601);
     assert_eq!(body["error"]["message"], "Method not found: bogusMethod");
 
-    let (_, body) = server.rpc("getModuleInfo", json!({ "module_name": "fs" })).await;
+    let (_, body) = server
+        .rpc("getModuleInfo", json!({ "module_name": "fs" }))
+        .await;
     assert_eq!(body["error"]["code"], -32001);
     server.stop().await;
 }
@@ -128,11 +136,16 @@ async fn test_batch_requests_rejected() {
 #[tokio::test]
 async fn test_malformed_json_is_parse_error() {
     let server = TestServer::start(ServeOptions::default()).await;
-    let (status, body) = server.post_json("{oops".to_string(), &server.endpoint.clone()).await;
+    let (status, body) = server
+        .post_json("{oops".to_string(), &server.endpoint.clone())
+        .await;
     assert_eq!(status, 200);
     assert_eq!(body["error"]["code"], -32700);
     assert!(
-        body["error"]["message"].as_str().unwrap().starts_with("Parse error:"),
+        body["error"]["message"]
+            .as_str()
+            .unwrap()
+            .starts_with("Parse error:"),
         "got: {}",
         body["error"]["message"]
     );
@@ -143,10 +156,10 @@ async fn test_malformed_json_is_parse_error() {
 async fn test_invalid_envelopes_rejected() {
     let server = TestServer::start(ServeOptions::default()).await;
     let cases = [
-        json!({ "jsonrpc": "2.0", "method": "listModules" }),          // no id
+        json!({ "jsonrpc": "2.0", "method": "listModules" }), // no id
         json!({ "jsonrpc": "1.0", "id": 1, "method": "listModules" }), // wrong version
-        json!({ "id": 1, "method": "listModules" }),                   // no jsonrpc
-        json!({ "jsonrpc": "2.0", "id": 1, "method": 42 }),            // non-string method
+        json!({ "id": 1, "method": "listModules" }),          // no jsonrpc
+        json!({ "jsonrpc": "2.0", "id": 1, "method": 42 }),   // non-string method
         json!("just a string"),
         json!(42),
     ];
@@ -167,8 +180,7 @@ async fn test_invalid_envelopes_rejected() {
 #[tokio::test]
 async fn test_null_id_is_a_valid_envelope() {
     let server = TestServer::start(ServeOptions::default()).await;
-    let envelope =
-        json!({ "jsonrpc": "2.0", "id": null, "method": "listModules", "params": {} });
+    let envelope = json!({ "jsonrpc": "2.0", "id": null, "method": "listModules", "params": {} });
     let (status, body) = server
         .post_json(envelope.to_string(), &server.endpoint.clone())
         .await;
@@ -199,7 +211,10 @@ async fn test_transport_rejections() {
     let response = client.get(&server.endpoint).send().await.unwrap();
     assert_eq!(response.status(), 405);
     assert_eq!(
-        response.headers().get("allow").and_then(|v| v.to_str().ok()),
+        response
+            .headers()
+            .get("allow")
+            .and_then(|v| v.to_str().ok()),
         Some("POST")
     );
 

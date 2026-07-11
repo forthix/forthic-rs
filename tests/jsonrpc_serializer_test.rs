@@ -65,7 +65,9 @@ const GOLDEN_FIXTURES: &str = r#"{
 
 fn fixture(name: &str) -> Value {
     let all: Value = serde_json::from_str(GOLDEN_FIXTURES).expect("fixtures parse");
-    all.get(name).unwrap_or_else(|| panic!("no fixture '{name}'")).clone()
+    all.get(name)
+        .unwrap_or_else(|| panic!("no fixture '{name}'"))
+        .clone()
 }
 
 fn la_datetime(y: i32, mo: u32, d: u32, h: u32, mi: u32, s: u32) -> ForthicValue {
@@ -181,8 +183,10 @@ fn test_round_trip_deeply_nested() {
         ForthicValue::Array(vec![
             ForthicValue::Record({
                 let mut m = HashMap::new();
-                m.insert("date".to_string(),
-                    ForthicValue::Date(NaiveDate::from_ymd_opt(1999, 12, 31).unwrap()));
+                m.insert(
+                    "date".to_string(),
+                    ForthicValue::Date(NaiveDate::from_ymd_opt(1999, 12, 31).unwrap()),
+                );
                 m.insert("when".to_string(), la_datetime(2024, 2, 29, 23, 59, 59));
                 m
             }),
@@ -293,10 +297,7 @@ fn test_malformed_payloads_are_errors() {
 #[test]
 fn test_unsupported_types_fail_to_serialize() {
     let cases: Vec<(ForthicValue, &str)> = vec![
-        (
-            ForthicValue::WordOptions(WordOptions::new()),
-            "WordOptions",
-        ),
+        (ForthicValue::WordOptions(WordOptions::new()), "WordOptions"),
         (ForthicValue::StartArrayMarker, "StartArrayMarker"),
     ];
     for (value, type_name) in cases {
