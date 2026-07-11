@@ -1,5 +1,9 @@
 # JSON-RPC Server Plan for forthic-rs
 
+> **Status (2026-07-10): Phases 1–4 complete.** Phase 5 (rust client)
+> deliberately deferred. See Follow-ups for the error-location work and
+> plans/TS-PARITY-BACKLOG.md for the broader parity items.
+
 Port of the forthic-ts JSON-RPC 2.0 server (`src/jsonrpc/` in forthic-ts) to Rust,
 including the security hardening from ts PR #25. Goal: a forthic-ts `JsonRpcClient`
 (or any runtime) can call into the Rust runtime with zero client changes — same

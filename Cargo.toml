@@ -41,6 +41,11 @@ colored = { version = "2", optional = true }
 [dev-dependencies]
 # Testing
 proptest = "1.0"
+# HTTP client for the jsonrpc server tests (no TLS needed for localhost)
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+# io-util for raw-socket tests (chunked bodies); merged into the feature-
+# activated tokio for test builds only
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "signal"] }
 
 [features]
 default = []
@@ -59,6 +64,14 @@ required-features = ["jsonrpc"]
 
 [[test]]
 name = "jsonrpc_dispatch_test"
+required-features = ["jsonrpc"]
+
+[[test]]
+name = "jsonrpc_server_test"
+required-features = ["jsonrpc"]
+
+[[test]]
+name = "jsonrpc_hardening_test"
 required-features = ["jsonrpc"]
 
 # Binary will be added in Phase 7
