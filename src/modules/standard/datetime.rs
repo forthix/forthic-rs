@@ -12,7 +12,7 @@
 use crate::errors::ForthicError;
 use crate::literals::ForthicValue;
 use crate::module::{InterpreterContext, Module, ModuleWord};
-use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, NaiveTime, TimeZone, Utc};
+use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveTime, TimeZone, Utc};
 use std::sync::Arc;
 
 /// DateTimeModule provides date and time operations
@@ -57,15 +57,22 @@ impl DateTimeModule {
         module.add_exportable_word(word);
     }
 
-    fn word_today(_context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
-        let today = Local::now().naive_local().date();
-        _context.stack_push(ForthicValue::Date(today));
+    /// The interpreter's configured timezone (falls back to UTC on an
+    /// unparseable name). NOW and TODAY must use the same source, or they
+    /// can disagree on what day it is.
+    fn context_tz(context: &dyn InterpreterContext) -> chrono_tz::Tz {
+        context.get_timezone().parse().unwrap_or(chrono_tz::UTC)
+    }
+
+    fn word_today(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let today = Utc::now().with_timezone(&Self::context_tz(context)).date_naive();
+        context.stack_push(ForthicValue::Date(today));
         Ok(())
     }
 
-    fn word_now(_context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
-        let now = Utc::now().with_timezone(&chrono_tz::UTC);
-        _context.stack_push(ForthicValue::DateTime(now));
+    fn word_now(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let now = Utc::now().with_timezone(&Self::context_tz(context));
+        context.stack_push(ForthicValue::DateTime(now));
         Ok(())
     }
 

@@ -40,6 +40,13 @@ pub trait InterpreterContext {
     fn get_app_module(&self) -> &Module;
     fn module_stack_push(&mut self, module: Module);
     fn module_stack_pop(&mut self) -> Result<Module, ForthicError>;
+
+    /// IANA timezone for time-dependent words (NOW, TODAY). Defaults to UTC
+    /// so existing context impls (and test mocks) keep compiling; the real
+    /// Interpreter overrides this with its configured timezone.
+    fn get_timezone(&self) -> &str {
+        "UTC"
+    }
 }
 
 /// Word error handler trait - handles errors during word execution
@@ -241,13 +248,17 @@ impl Word for DefinitionWord {
 
     fn execute(&self, context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
         for word in &self.words {
-            word.execute(context).map_err(|e| {
-                ForthicError::WordExecution {
+            word.execute(context).map_err(|e| match e {
+                // IntentionalStop is flow control, not failure: hosts match
+                // on it after a debugging stop, so it must keep its identity
+                // (and message) instead of being wrapped in WordExecution
+                stop @ ForthicError::IntentionalStop { .. } => stop,
+                e => ForthicError::WordExecution {
                     message: format!("Error executing {}", self.name),
                     inner_error: Box::new(e),
                     call_location: None,
                     definition_location: self.location.clone(),
-                }
+                },
             })?;
         }
         Ok(())
@@ -489,12 +500,9 @@ impl Word for ModuleWord {
     fn execute(&self, context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
         match (self.handler)(context) {
             Ok(()) => Ok(()),
-            Err(ForthicError::IntentionalStop { .. }) => {
-                // Never handle intentional flow control errors
-                Err(ForthicError::IntentionalStop {
-                    message: "Intentional stop".to_string(),
-                })
-            }
+            // Never handle intentional flow control errors; rethrow as-is so
+            // the original stop message survives
+            Err(stop @ ForthicError::IntentionalStop { .. }) => Err(stop),
             Err(e) => {
                 // Try error handlers
                 let handled = self.try_error_handlers(&e, context);

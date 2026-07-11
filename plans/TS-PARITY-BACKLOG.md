@@ -7,6 +7,9 @@ the spec for anything ported.
 
 ## Tier 1 — Real bugs in forthic-rs today (small fixes, high value)
 
+> **Status: all five fixed** (fix/tier1-correctness branch, with regression
+> tests in tests/tier1_correctness_test.rs).
+
 1. **Error formatter can abort the process.** All three caret builders do
    unchecked `end_pos - start_pos` (`errors.rs:296-298`, `333-335`, `351-353`).
    A degenerate CodeLocation (`end_pos < start_pos`, constructible by any

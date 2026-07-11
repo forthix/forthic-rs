@@ -281,6 +281,14 @@ impl ForthicError {
 }
 
 /// Format a standard error with code context
+/// Caret count for the error underline. CodeLocation fields are pub, so a
+/// degenerate location (end_pos < start_pos) is constructible by any word or
+/// module; formatting an error must never panic, so the subtraction saturates.
+fn caret_span(location: &CodeLocation) -> usize {
+    let end_pos = location.end_pos.unwrap_or(location.start_pos + 1);
+    end_pos.saturating_sub(location.start_pos).max(1)
+}
+
 fn format_standard_error(message: &str, forthic: &str, location: &CodeLocation) -> String {
     let lines: Vec<&str> = forthic.split('\n').collect();
     let line_num = location.line;
@@ -293,9 +301,8 @@ fn format_standard_error(message: &str, forthic: &str, location: &CodeLocation) 
         .collect();
 
     // Create the error indicator line (spaces + carets)
-    let end_pos = location.end_pos.unwrap_or(location.start_pos + 1);
-    let error_indicator = " ".repeat(location.column.saturating_sub(1))
-        + &"^".repeat((end_pos - location.start_pos).max(1));
+    let error_indicator =
+        " ".repeat(location.column.saturating_sub(1)) + &"^".repeat(caret_span(location));
 
     // Build location info
     let mut location_info = format!("at line {}", line_num);
@@ -330,9 +337,8 @@ fn format_word_execution_error(
         .map(|line| (*line).to_string())
         .collect();
 
-    let def_end_pos = def_location.end_pos.unwrap_or(def_location.start_pos + 1);
-    let def_error_indicator = " ".repeat(def_location.column.saturating_sub(1))
-        + &"^".repeat((def_end_pos - def_location.start_pos).max(1));
+    let def_error_indicator =
+        " ".repeat(def_location.column.saturating_sub(1)) + &"^".repeat(caret_span(def_location));
 
     let mut def_location_info = format!("at line {}", def_line_num);
     if let Some(ref source) = def_location.source {
@@ -348,9 +354,8 @@ fn format_word_execution_error(
             .map(|line| (*line).to_string())
             .collect();
 
-        let call_end_pos = call_loc.end_pos.unwrap_or(call_loc.start_pos + 1);
-        let call_error_indicator = " ".repeat(call_loc.column.saturating_sub(1))
-            + &"^".repeat((call_end_pos - call_loc.start_pos).max(1));
+        let call_error_indicator =
+            " ".repeat(call_loc.column.saturating_sub(1)) + &"^".repeat(caret_span(call_loc));
 
         let mut call_location_info = format!("line {}", call_line_num);
         if let Some(ref source) = call_loc.source {

@@ -995,6 +995,10 @@ impl InterpreterContext for Interpreter {
         self.stack.push(value);
     }
 
+    fn get_timezone(&self) -> &str {
+        &self.timezone
+    }
+
     fn stack_pop(&mut self) -> Result<ForthicValue, ForthicError> {
         self.stack.pop()
     }
