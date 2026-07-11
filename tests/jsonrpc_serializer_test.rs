@@ -10,8 +10,8 @@ use chrono_tz::Tz;
 use forthic::jsonrpc::{deserialize_value, serialize_value, SerializerError};
 use forthic::literals::ForthicValue;
 use forthic::word_options::WordOptions;
-use serde_json::{json, Value};
 use indexmap::IndexMap;
+use serde_json::{json, Value};
 
 const GOLDEN_FIXTURES: &str = r#"{
   "null_v": { "null_value": {} },

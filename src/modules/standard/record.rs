@@ -259,7 +259,8 @@ impl RecordModule {
 
         let result = match record {
             ForthicValue::Record(rec) => {
-                let mut inverted: IndexMap<String, IndexMap<String, ForthicValue>> = IndexMap::new();
+                let mut inverted: IndexMap<String, IndexMap<String, ForthicValue>> =
+                    IndexMap::new();
 
                 for (first_key, sub_val) in rec {
                     if let ForthicValue::Record(sub_rec) = sub_val {
@@ -331,7 +332,10 @@ impl RecordModule {
         let result = match container {
             ForthicValue::Record(mut rec) => {
                 if let ForthicValue::String(k) = key {
-                    rec.remove(&k);
+                    // shift_remove preserves the order of remaining entries
+                    // (IndexMap's plain remove is a swap_remove, which would
+                    // silently break the insertion-order contract)
+                    rec.shift_remove(&k);
                 }
                 ForthicValue::Record(rec)
             }

@@ -9,8 +9,8 @@
 use crate::errors::ForthicError;
 use crate::literals::ForthicValue;
 use crate::module::{InterpreterContext, Module, ModuleWord};
-use serde_json::{json, Value as JsonValue};
 use indexmap::IndexMap;
+use serde_json::{json, Value as JsonValue};
 use std::sync::Arc;
 
 /// JSONModule provides JSON serialization operations

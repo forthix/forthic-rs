@@ -3,17 +3,25 @@
 // Array and collection operations for manipulating arrays and records.
 //
 // ## Categories
-// - Access: NTH, LAST, SLICE, TAKE, DROP, LENGTH
+// - Access: NTH, FIRST, LAST, SLICE, TAKE, TAKE-LAST, DROP, LENGTH
 // - Transform: REVERSE
 // - Combine: APPEND, ZIP, CONCAT
 // - Filter: UNIQUE, DIFFERENCE, INTERSECTION, UNION
 // - Utility: FLATTEN, RANGE, UNPACK
+//
+// Record-aware words follow the ts #33 contract: record in -> record out,
+// entries in insertion order.
 
 use crate::errors::ForthicError;
 use crate::literals::ForthicValue;
 use crate::module::{InterpreterContext, Module, ModuleWord};
+use indexmap::IndexMap;
 use std::collections::HashSet;
 use std::sync::Arc;
+
+/// SLICE pads out-of-range indexes, so a huge span would materialize a huge
+/// array; guard it (same limit as forthic-ts)
+const MAX_MATERIALIZED_ELEMENTS: i64 = 10_000_000;
 
 /// ArrayModule provides array and collection operations
 pub struct ArrayModule {
@@ -56,6 +64,10 @@ impl ArrayModule {
         let word = Arc::new(ModuleWord::new("NTH".to_string(), Self::word_nth));
         module.add_exportable_word(word);
 
+        // FIRST
+        let word = Arc::new(ModuleWord::new("FIRST".to_string(), Self::word_first));
+        module.add_exportable_word(word);
+
         // LAST
         let word = Arc::new(ModuleWord::new("LAST".to_string(), Self::word_last));
         module.add_exportable_word(word);
@@ -71,6 +83,31 @@ impl ArrayModule {
         // DROP
         let word = Arc::new(ModuleWord::new("DROP".to_string(), Self::word_drop));
         module.add_exportable_word(word);
+
+        // TAKE-LAST
+        let word = Arc::new(ModuleWord::new(
+            "TAKE-LAST".to_string(),
+            Self::word_take_last,
+        ));
+        module.add_exportable_word(word);
+    }
+
+    fn word_first(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let container = context.stack_pop()?;
+
+        let result = match container {
+            ForthicValue::Array(arr) => arr.first().cloned().unwrap_or(ForthicValue::Null),
+            ForthicValue::Record(rec) => {
+                // Insertion order (ts #33)
+                rec.first()
+                    .map(|(_, v)| v.clone())
+                    .unwrap_or(ForthicValue::Null)
+            }
+            _ => ForthicValue::Null,
+        };
+
+        context.stack_push(result);
+        Ok(())
     }
 
     fn word_length(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
@@ -168,30 +205,35 @@ impl ArrayModule {
 
         let result = match container {
             ForthicValue::Array(arr) => {
-                let len = arr.len() as i64;
-                let norm_start = if start < 0 { start + len } else { start };
-                let norm_end = if end < 0 { end + len } else { end };
-
-                if norm_start < 0 || norm_start >= len {
-                    ForthicValue::Array(vec![])
-                } else {
-                    let step = if norm_start > norm_end { -1 } else { 1 };
-                    let mut result = Vec::new();
-                    let mut i = norm_start;
-
-                    loop {
-                        if i < 0 || i >= len {
-                            result.push(ForthicValue::Null);
-                        } else {
-                            result.push(arr[i as usize].clone());
-                        }
-                        if i == norm_end {
-                            break;
-                        }
-                        i += step;
+                match Self::slice_indexes(start, end, arr.len())? {
+                    None => ForthicValue::Array(vec![]),
+                    Some(indexes) => {
+                        // Out-of-range indexes pad with nulls (arrays only)
+                        let sliced = indexes
+                            .into_iter()
+                            .map(|i| match i {
+                                Some(i) => arr[i].clone(),
+                                None => ForthicValue::Null,
+                            })
+                            .collect();
+                        ForthicValue::Array(sliced)
                     }
-
-                    ForthicValue::Array(result)
+                }
+            }
+            ForthicValue::Record(rec) => {
+                // Record in -> record out, entries by insertion order;
+                // out-of-range indexes are skipped rather than null-padded
+                match Self::slice_indexes(start, end, rec.len())? {
+                    None => ForthicValue::Record(IndexMap::new()),
+                    Some(indexes) => {
+                        let mut result = IndexMap::new();
+                        for i in indexes.into_iter().flatten() {
+                            if let Some((k, v)) = rec.get_index(i) {
+                                result.insert(k.clone(), v.clone());
+                            }
+                        }
+                        ForthicValue::Record(result)
+                    }
                 }
             }
             ForthicValue::Null => ForthicValue::Array(vec![]),
@@ -202,20 +244,132 @@ impl ArrayModule {
         Ok(())
     }
 
+    /// Shared SLICE index walk: normalize negative indexes, then step from
+    /// start toward end (either direction). Returns None when start is out
+    /// of range (empty result); out-of-range steps yield None entries.
+    /// Guards the span size — SLICE pads out-of-range indexes, so a huge
+    /// end index would otherwise materialize a huge array.
+    fn slice_indexes(
+        start: i64,
+        end: i64,
+        len: usize,
+    ) -> Result<Option<Vec<Option<usize>>>, ForthicError> {
+        let len = len as i64;
+        let normalize = |i: i64| if i < 0 { i + len } else { i };
+        let start = normalize(start);
+        let end = normalize(end);
+
+        let span = (end - start).abs() + 1;
+        if span > MAX_MATERIALIZED_ELEMENTS {
+            return Err(ForthicError::InvalidOperation {
+                forthic: String::new(),
+                message: format!(
+                    "SLICE span {span} is too large (limit {MAX_MATERIALIZED_ELEMENTS})"
+                ),
+                location: None,
+                cause: None,
+            });
+        }
+
+        if start < 0 || start >= len {
+            return Ok(None);
+        }
+
+        let step = if start > end { -1 } else { 1 };
+        let mut indexes = Vec::new();
+        let mut i = start;
+        loop {
+            if i < 0 || i >= len {
+                indexes.push(None);
+            } else {
+                indexes.push(Some(i as usize));
+            }
+            if i == end {
+                break;
+            }
+            i += step;
+        }
+        Ok(Some(indexes))
+    }
+
     fn word_take(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        // Optional trailing WordOptions: ( container n [options] -- result )
+        let options = Self::pop_options(context);
         let n_val = context.stack_pop()?;
         let container = context.stack_pop()?;
 
         let n = match n_val {
-            ForthicValue::Int(i) => i as usize,
-            ForthicValue::Float(f) => f as usize,
+            ForthicValue::Int(i) => i.max(0) as usize,
+            ForthicValue::Float(f) => f.max(0.0) as usize,
             _ => 0,
         };
+        let push_rest = options
+            .as_ref()
+            .and_then(|o| o.get_bool("push_rest"))
+            .unwrap_or(false);
+
+        let (taken, rest) = match container {
+            ForthicValue::Array(arr) => {
+                let taken: Vec<_> = arr.iter().take(n).cloned().collect();
+                let rest: Vec<_> = arr.iter().skip(n).cloned().collect();
+                (ForthicValue::Array(taken), ForthicValue::Array(rest))
+            }
+            ForthicValue::Record(rec) => {
+                // Record in -> record out, insertion order (ts #33)
+                let taken: IndexMap<_, _> = rec
+                    .iter()
+                    .take(n)
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                let rest: IndexMap<_, _> = rec
+                    .iter()
+                    .skip(n)
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                (ForthicValue::Record(taken), ForthicValue::Record(rest))
+            }
+            ForthicValue::Null => (ForthicValue::Array(vec![]), ForthicValue::Array(vec![])),
+            other => (other, ForthicValue::Array(vec![])),
+        };
+
+        if push_rest {
+            context.stack_push(taken);
+            context.stack_push(rest);
+        } else {
+            context.stack_push(taken);
+        }
+        Ok(())
+    }
+
+    fn word_drop(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let n_val = context.stack_pop()?;
+        let container = context.stack_pop()?;
+
+        let n = match n_val {
+            ForthicValue::Int(i) => i,
+            ForthicValue::Float(f) => f as i64,
+            _ => 0,
+        };
+        // n <= 0 skips nothing (ts SKIP returns the container unchanged)
+        if n <= 0 {
+            context.stack_push(container);
+            return Ok(());
+        }
+        let n = n as usize;
 
         let result = match container {
             ForthicValue::Array(arr) => {
-                let taken: Vec<_> = arr.iter().take(n).cloned().collect();
-                ForthicValue::Array(taken)
+                let dropped: Vec<_> = arr.iter().skip(n).cloned().collect();
+                ForthicValue::Array(dropped)
+            }
+            ForthicValue::Record(rec) => {
+                // Record in -> record out, insertion order (ts #33)
+                let rest: IndexMap<_, _> = rec
+                    .iter()
+                    .skip(n)
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                ForthicValue::Record(rest)
             }
             ForthicValue::Null => ForthicValue::Array(vec![]),
             _ => container,
@@ -225,27 +379,53 @@ impl ArrayModule {
         Ok(())
     }
 
-    fn word_drop(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+    fn word_take_last(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
         let n_val = context.stack_pop()?;
         let container = context.stack_pop()?;
 
         let n = match n_val {
-            ForthicValue::Int(i) => i as usize,
-            ForthicValue::Float(f) => f as usize,
+            ForthicValue::Int(i) => i,
+            ForthicValue::Float(f) => f as i64,
             _ => 0,
         };
 
         let result = match container {
+            _ if n <= 0 => match container {
+                ForthicValue::Record(_) => ForthicValue::Record(IndexMap::new()),
+                _ => ForthicValue::Array(vec![]),
+            },
             ForthicValue::Array(arr) => {
-                let dropped: Vec<_> = arr.iter().skip(n).cloned().collect();
-                ForthicValue::Array(dropped)
+                let skip = arr.len().saturating_sub(n as usize);
+                ForthicValue::Array(arr.iter().skip(skip).cloned().collect())
+            }
+            ForthicValue::Record(rec) => {
+                let skip = rec.len().saturating_sub(n as usize);
+                let tail: IndexMap<_, _> = rec
+                    .iter()
+                    .skip(skip)
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                ForthicValue::Record(tail)
             }
             ForthicValue::Null => ForthicValue::Array(vec![]),
-            _ => container,
+            other => other,
         };
 
         context.stack_push(result);
         Ok(())
+    }
+
+    /// Pop a WordOptions value if one sits on top of the stack (Forthic's
+    /// optional-trailing-options convention: `... [.push_rest TRUE] ~> TAKE`)
+    fn pop_options(
+        context: &mut dyn InterpreterContext,
+    ) -> Option<crate::word_options::WordOptions> {
+        if matches!(context.stack_peek(), Some(ForthicValue::WordOptions(_))) {
+            if let Ok(ForthicValue::WordOptions(options)) = context.stack_pop() {
+                return Some(options);
+            }
+        }
+        None
     }
 
     // ===== Transform Operations =====
@@ -406,41 +586,58 @@ impl ArrayModule {
     fn word_difference(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
         let right = context.stack_pop()?;
         let left = context.stack_pop()?;
-
-        let result = match (left, right) {
-            (ForthicValue::Array(l), ForthicValue::Array(r)) => {
-                let r_set: HashSet<_> = r.iter().map(Self::value_to_key).collect();
-                let diff: Vec<_> = l
-                    .into_iter()
-                    .filter(|v| !r_set.contains(&Self::value_to_key(v)))
-                    .collect();
-                ForthicValue::Array(diff)
-            }
-            _ => ForthicValue::Array(vec![]),
-        };
-
-        context.stack_push(result);
+        context.stack_push(Self::set_op(left, right, false));
         Ok(())
     }
 
     fn word_intersection(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
         let right = context.stack_pop()?;
         let left = context.stack_pop()?;
-
-        let result = match (left, right) {
-            (ForthicValue::Array(l), ForthicValue::Array(r)) => {
-                let r_set: HashSet<_> = r.iter().map(Self::value_to_key).collect();
-                let inter: Vec<_> = l
-                    .into_iter()
-                    .filter(|v| r_set.contains(&Self::value_to_key(v)))
-                    .collect();
-                ForthicValue::Array(inter)
-            }
-            _ => ForthicValue::Array(vec![]),
-        };
-
-        context.stack_push(result);
+        context.stack_push(Self::set_op(left, right, true));
         Ok(())
+    }
+
+    /// Shared set operation for DIFFERENCE (keep=false) and INTERSECTION
+    /// (keep=true). The result follows the LEFT operand's shape (ts #31):
+    /// - array left: element membership against the right's elements
+    ///   (or its values when the right is a record);
+    /// - record left: keep/drop entries whose KEY is in the right's key set
+    ///   (its string elements if the right is an array, its keys if it's a
+    ///   record) — INTERSECTION behaves like PICK, DIFFERENCE like OMIT.
+    fn set_op(left: ForthicValue, right: ForthicValue, keep: bool) -> ForthicValue {
+        match left {
+            ForthicValue::Array(l) => {
+                let r_set: HashSet<String> = match &right {
+                    ForthicValue::Array(r) => r.iter().map(Self::value_to_key).collect(),
+                    ForthicValue::Record(r) => r.values().map(Self::value_to_key).collect(),
+                    _ => HashSet::new(),
+                };
+                let filtered: Vec<_> = l
+                    .into_iter()
+                    .filter(|v| r_set.contains(&Self::value_to_key(v)) == keep)
+                    .collect();
+                ForthicValue::Array(filtered)
+            }
+            ForthicValue::Record(l) => {
+                // Key membership: only string elements of an array right can
+                // match record keys (same in ts, where Set.has compares ===)
+                let r_keys: HashSet<String> = match &right {
+                    ForthicValue::Array(r) => r
+                        .iter()
+                        .filter_map(|v| v.as_string().map(str::to_string))
+                        .collect(),
+                    ForthicValue::Record(r) => r.keys().cloned().collect(),
+                    _ => HashSet::new(),
+                };
+                let filtered: IndexMap<_, _> = l
+                    .into_iter()
+                    .filter(|(k, _)| r_keys.contains(k) == keep)
+                    .collect();
+                ForthicValue::Record(filtered)
+            }
+            ForthicValue::Null => ForthicValue::Array(vec![]),
+            other => other,
+        }
     }
 
     fn word_union(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
@@ -551,6 +748,12 @@ impl ArrayModule {
                     context.stack_push(item);
                 }
             }
+            ForthicValue::Record(rec) => {
+                // Values in insertion order (ts #33)
+                for (_, value) in rec {
+                    context.stack_push(value);
+                }
+            }
             _ => context.stack_push(container),
         }
 
@@ -559,13 +762,15 @@ impl ArrayModule {
 
     // ===== Helper Functions =====
 
-    /// Convert ForthicValue to a string key for hashing
+    /// Convert ForthicValue to a string key for hashing. Int and Float share
+    /// the numeric keyspace (JS has one number type, so 1 and 1.0 are the
+    /// same set element there — and values_equal treats them as equal too).
     fn value_to_key(val: &ForthicValue) -> String {
         match val {
             ForthicValue::Null => "null".to_string(),
             ForthicValue::Bool(b) => format!("bool:{}", b),
-            ForthicValue::Int(i) => format!("int:{}", i),
-            ForthicValue::Float(f) => format!("float:{}", f),
+            ForthicValue::Int(i) => format!("num:{}", *i as f64),
+            ForthicValue::Float(f) => format!("num:{}", f),
             ForthicValue::String(s) => format!("string:{}", s),
             _ => format!("{:?}", val),
         }

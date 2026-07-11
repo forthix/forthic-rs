@@ -202,6 +202,17 @@ pub enum ForthicError {
     /// Intentional stop (not an error, used for control flow)
     #[error("Intentional stop: {message}")]
     IntentionalStop { message: String },
+
+    /// Invalid operation: a word was called with arguments it must refuse
+    /// (e.g. a SLICE span that would materialize an enormous array)
+    #[error("{message}")]
+    InvalidOperation {
+        forthic: String,
+        message: String,
+        location: Option<CodeLocation>,
+        #[source]
+        cause: Option<Box<dyn std::error::Error + Send + Sync>>,
+    },
 }
 
 impl ForthicError {
@@ -219,7 +230,8 @@ impl ForthicError {
             | Self::UnterminatedString { forthic, .. }
             | Self::UnknownToken { forthic, .. }
             | Self::Module { forthic, .. }
-            | Self::TooManyAttempts { forthic, .. } => Some(forthic),
+            | Self::TooManyAttempts { forthic, .. }
+            | Self::InvalidOperation { forthic, .. } => Some(forthic),
             Self::WordExecution { .. } | Self::IntentionalStop { .. } => None,
         }
     }
@@ -238,7 +250,8 @@ impl ForthicError {
             | Self::UnterminatedString { location, .. }
             | Self::UnknownToken { location, .. }
             | Self::Module { location, .. }
-            | Self::TooManyAttempts { location, .. } => location.as_ref(),
+            | Self::TooManyAttempts { location, .. }
+            | Self::InvalidOperation { location, .. } => location.as_ref(),
             Self::WordExecution { call_location, .. } => call_location.as_ref(),
             Self::IntentionalStop { .. } => None,
         }
