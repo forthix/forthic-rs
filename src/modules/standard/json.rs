@@ -121,8 +121,11 @@ impl JSONModule {
 
     // ===== Helper Functions =====
 
-    /// Convert ForthicValue to serde_json::Value
-    fn forthic_to_json(val: &ForthicValue) -> JsonValue {
+    /// Convert ForthicValue to serde_json::Value. Temporal values use the
+    /// same ISO forms ts produces via Temporal.toJSON (times keep fractional
+    /// seconds, zoned datetimes carry the bracketed timezone annotation).
+    /// Also used by >STR to render records as JSON.
+    pub(crate) fn forthic_to_json(val: &ForthicValue) -> JsonValue {
         match val {
             ForthicValue::Null => JsonValue::Null,
             ForthicValue::Bool(b) => JsonValue::Bool(*b),
@@ -141,8 +144,12 @@ impl JSONModule {
                 JsonValue::Object(json_obj)
             }
             ForthicValue::Date(d) => JsonValue::String(d.format("%Y-%m-%d").to_string()),
-            ForthicValue::Time(t) => JsonValue::String(t.format("%H:%M:%S").to_string()),
-            ForthicValue::DateTime(dt) => JsonValue::String(dt.to_rfc3339()),
+            ForthicValue::Time(t) => JsonValue::String(t.format("%H:%M:%S%.f").to_string()),
+            ForthicValue::DateTime(dt) => JsonValue::String(format!(
+                "{}[{}]",
+                dt.to_rfc3339_opts(chrono::SecondsFormat::AutoSi, false),
+                dt.timezone().name()
+            )),
             _ => JsonValue::Null,
         }
     }

@@ -213,7 +213,7 @@ fn test_set_ops_unify_int_and_float() {
     );
 }
 
-// ===== >STR (ts parity: null -> "", else JS toString) =====
+// ===== >STR (coordinated ts/rs contract — Tier 5 item 17) =====
 
 #[test]
 fn test_to_str_matches_js_semantics() {
@@ -225,11 +225,26 @@ fn test_to_str_matches_js_semantics() {
     assert_eq!(run("3.0 >STR"), s("3"));
     // JS Array.toString: comma-join, null elements empty, nested flattened
     assert_eq!(run("[ 1 NULL [ 2 3 ] ] >STR"), s("1,,2,3"));
-    // JS Object.toString
-    assert_eq!(run(&format!("{ZAM} >STR")), s("[object Object]"));
     // Temporal-style ISO forms
     assert_eq!(run("2020-06-05 >STR"), s("2020-06-05"));
     assert_eq!(run("9:30 >STR"), s("09:30:00"));
+}
+
+#[test]
+fn test_to_str_renders_records_as_json() {
+    // Coordinated contract change (both repos): insertion-ordered JSON
+    // instead of "[object Object]"
+    assert_eq!(run(&format!("{ZAM} >STR")), s(r#"{"z":1,"a":2,"m":3}"#));
+    // Record elements inside arrays render as JSON within the comma-join
+    assert_eq!(
+        run("[ [ [ 'a' 1 ] ] REC [ [ 'b' 2 ] ] REC ] >STR"),
+        s(r#"{"a":1},{"b":2}"#)
+    );
+    // Temporal values inside records use their ISO forms (ts Temporal.toJSON)
+    assert_eq!(
+        run("[ [ 'd' 2020-06-05 ] ] REC >STR"),
+        s(r#"{"d":"2020-06-05"}"#)
+    );
 }
 
 // ===== Wire round-trip order (jsonrpc feature) =====

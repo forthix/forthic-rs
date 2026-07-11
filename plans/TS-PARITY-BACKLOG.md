@@ -98,13 +98,13 @@ Unlike Tiers 1–4 (rs catching up to post-scrub ts), these change the
 cross-runtime contract itself, so they land in forthic-ts first and rs
 mirrors in the same pass — the plain-time extension (ts #36) is the model.
 
-17. **`>STR` of records should be useful, not "[object Object]".** Both
-    runtimes currently emit JS `Object.prototype.toString` output for
-    records (rs deliberately matches ts). Proposal: JSON rendering
-    (insertion-ordered, same as `>JSON`). Decide at the same time whether
-    array `>STR` stays JS comma-join (`"1,2,3"`) or also becomes JSON
-    (`"[1,2,3]"`) — the latter is more consistent but changes more existing
-    programs. Update both repos' tests together.
+17. **`>STR` of records should be useful, not "[object Object]".**
+    **DONE** (ts #37 + rs companion): records render as insertion-ordered
+    JSON; arrays keep JS comma-join, with record elements inside arrays
+    rendering as JSON. Verified byte-identical by running the same Forthic
+    programs through both interpreters. Bonus: rs `>JSON` temporal forms
+    aligned with ts `Temporal.toJSON` (times keep fractional seconds,
+    zoned datetimes carry the bracketed timezone annotation).
 18. **Candidates worth a decision, not yet committed to:**
     - DateTime `==` timezone-sensitivity: same instant in different
       timezones is currently NOT equal (ISO-string comparison in ts,

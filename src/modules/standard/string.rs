@@ -72,11 +72,13 @@ impl StringModule {
         Ok(())
     }
 
-    /// ts >STR is `null -> ""`, otherwise JS toString(); mirror those
-    /// semantics so Forthic programs stringify identically across runtimes:
+    /// `>STR` stringification, mirrored byte-for-byte with ts (see ts
+    /// string_module's stringifyValue):
+    /// - null -> ""
+    /// - records render as insertion-ordered JSON (not "[object Object]")
     /// - arrays comma-join their recursively stringified elements, with
-    ///   null elements as empty strings (JS Array.prototype.toString)
-    /// - records are "[object Object]" (JS Object.prototype.toString)
+    ///   null elements as empty strings (JS Array.prototype.toString) —
+    ///   record elements render as JSON
     /// - temporal values use their ISO forms (Temporal toString)
     fn stringify(val: &ForthicValue) -> String {
         match val {
@@ -91,7 +93,10 @@ impl StringModule {
                 .map(Self::stringify)
                 .collect::<Vec<_>>()
                 .join(","),
-            ForthicValue::Record(_) => "[object Object]".to_string(),
+            ForthicValue::Record(_) => {
+                // Same rendering as >JSON, so >STR and >JSON agree
+                crate::modules::standard::json::JSONModule::forthic_to_json(val).to_string()
+            }
             ForthicValue::Date(d) => d.format("%Y-%m-%d").to_string(),
             ForthicValue::Time(t) => t.format("%H:%M:%S%.f").to_string(),
             ForthicValue::DateTime(dt) => {
