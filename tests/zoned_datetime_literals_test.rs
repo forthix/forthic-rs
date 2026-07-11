@@ -1,6 +1,6 @@
-use forthic::literals::{to_zoned_datetime, ForthicValue};
 use chrono::Timelike;
 use chrono_tz::Tz;
+use forthic::literals::{to_zoned_datetime, ForthicValue};
 
 // Literal Parsing Tests
 

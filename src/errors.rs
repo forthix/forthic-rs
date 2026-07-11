@@ -201,9 +201,7 @@ pub enum ForthicError {
 
     /// Intentional stop (not an error, used for control flow)
     #[error("Intentional stop: {message}")]
-    IntentionalStop {
-        message: String,
-    },
+    IntentionalStop { message: String },
 }
 
 impl ForthicError {
@@ -267,12 +265,7 @@ impl ForthicError {
             ..
         } = self
         {
-            return format_word_execution_error(
-                message,
-                forthic,
-                call_location.as_ref(),
-                def_loc,
-            );
+            return format_word_execution_error(message, forthic, call_location.as_ref(), def_loc);
         }
 
         // Standard error format

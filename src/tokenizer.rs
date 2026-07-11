@@ -79,11 +79,7 @@ impl Tokenizer {
     /// * `string` - The source code to tokenize
     /// * `reference_location` - Optional starting location for error reporting
     /// * `streaming` - Whether this is a streaming tokenizer (incomplete input allowed)
-    pub fn new(
-        string: String,
-        reference_location: Option<CodeLocation>,
-        streaming: bool,
-    ) -> Self {
+    pub fn new(string: String, reference_location: Option<CodeLocation>, streaming: bool) -> Self {
         let reference_location = reference_location.unwrap_or_default();
         let line = reference_location.line;
         let column = reference_location.column;
@@ -636,10 +632,12 @@ mod tests {
 
     #[test]
     fn test_triple_quote_string() {
-        let tokens = tokenize_all(r#""""multi
+        let tokens = tokenize_all(
+            r#""""multi
 line
-string""""#)
-            .unwrap();
+string""""#,
+        )
+        .unwrap();
         assert_eq!(tokens.len(), 1);
         assert_eq!(tokens[0].token_type, TokenType::String);
         assert!(tokens[0].string.contains("multi"));

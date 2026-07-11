@@ -77,7 +77,9 @@ impl ForthicJsonRpcServicer {
         let word_name = params
             .get("word_name")
             .and_then(Value::as_str)
-            .ok_or_else(|| MethodError::invalid_params("executeWord requires string \"word_name\""))?;
+            .ok_or_else(|| {
+                MethodError::invalid_params("executeWord requires string \"word_name\"")
+            })?;
         let stack_json = params
             .get("stack")
             .and_then(Value::as_array)
@@ -90,9 +92,9 @@ impl ForthicJsonRpcServicer {
         for item in stack {
             interp.stack_push(item);
         }
-        interp
-            .run(word_name)
-            .map_err(|e| self.runtime_error_from_forthic(&e, context.clone(), expose_error_details))?;
+        interp.run(word_name).map_err(|e| {
+            self.runtime_error_from_forthic(&e, context.clone(), expose_error_details)
+        })?;
 
         self.serialize_result_stack(&interp, &context)
     }
@@ -114,7 +116,9 @@ impl ForthicJsonRpcServicer {
         let stack_json = params
             .get("stack")
             .and_then(Value::as_array)
-            .ok_or_else(|| MethodError::invalid_params("executeSequence requires array \"stack\""))?;
+            .ok_or_else(|| {
+                MethodError::invalid_params("executeSequence requires array \"stack\"")
+            })?;
 
         let context = HashMap::from([("word_sequence".to_string(), word_names.join(", "))]);
         let stack = self.deserialize_stack(stack_json, &context)?;
@@ -194,7 +198,15 @@ impl ForthicJsonRpcServicer {
             .iter()
             .map(deserialize_value)
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| self.runtime_error(e.to_string(), "SerializerError", context.clone(), None, None))
+            .map_err(|e| {
+                self.runtime_error(
+                    e.to_string(),
+                    "SerializerError",
+                    context.clone(),
+                    None,
+                    None,
+                )
+            })
     }
 
     fn serialize_result_stack(
@@ -208,7 +220,15 @@ impl ForthicJsonRpcServicer {
             .iter()
             .map(serialize_value)
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| self.runtime_error(e.to_string(), "SerializerError", context.clone(), None, None))?;
+            .map_err(|e| {
+                self.runtime_error(
+                    e.to_string(),
+                    "SerializerError",
+                    context.clone(),
+                    None,
+                    None,
+                )
+            })?;
         Ok(json!({ "result_stack": result_stack }))
     }
 

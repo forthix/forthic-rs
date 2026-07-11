@@ -238,9 +238,7 @@ mod tests {
     #[test]
     fn test_format_datetime() {
         let tz: Tz = "UTC".parse().unwrap();
-        let dt = tz
-            .with_ymd_and_hms(2023, 12, 25, 14, 30, 0)
-            .unwrap();
+        let dt = tz.with_ymd_and_hms(2023, 12, 25, 14, 30, 0).unwrap();
 
         let formatted = format_datetime(&dt);
         assert_eq!(formatted, "2023-12-25 14:30:00");
@@ -286,9 +284,7 @@ mod tests {
     fn test_roundtrip_datetime() {
         // Create a datetime, format it, parse it back
         let tz: Tz = "America/New_York".parse().unwrap();
-        let original = tz
-            .with_ymd_and_hms(2023, 6, 15, 10, 30, 0)
-            .unwrap();
+        let original = tz.with_ymd_and_hms(2023, 6, 15, 10, 30, 0).unwrap();
 
         let formatted = format_datetime(&original);
         let parsed = to_zoned_datetime(&formatted, "America/New_York");

@@ -58,7 +58,10 @@ impl BooleanModule {
         module.add_exportable_word(word);
 
         // <=
-        let word = Arc::new(ModuleWord::new("<=".to_string(), Self::word_less_than_or_equal));
+        let word = Arc::new(ModuleWord::new(
+            "<=".to_string(),
+            Self::word_less_than_or_equal,
+        ));
         module.add_exportable_word(word);
 
         // >
@@ -66,7 +69,10 @@ impl BooleanModule {
         module.add_exportable_word(word);
 
         // >=
-        let word = Arc::new(ModuleWord::new(">=".to_string(), Self::word_greater_than_or_equal));
+        let word = Arc::new(ModuleWord::new(
+            ">=".to_string(),
+            Self::word_greater_than_or_equal,
+        ));
         module.add_exportable_word(word);
     }
 
@@ -135,7 +141,9 @@ impl BooleanModule {
         Ok(())
     }
 
-    fn word_greater_than_or_equal(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+    fn word_greater_than_or_equal(
+        context: &mut dyn InterpreterContext,
+    ) -> Result<(), ForthicError> {
         let b = context.stack_pop()?;
         let a = context.stack_pop()?;
 
@@ -353,7 +361,9 @@ impl BooleanModule {
                 if av.len() != bv.len() {
                     return false;
                 }
-                av.iter().zip(bv.iter()).all(|(a, b)| Self::values_equal(a, b))
+                av.iter()
+                    .zip(bv.iter())
+                    .all(|(a, b)| Self::values_equal(a, b))
             }
             (ForthicValue::Date(av), ForthicValue::Date(bv)) => av == bv,
             (ForthicValue::Time(av), ForthicValue::Time(bv)) => av == bv,

@@ -295,10 +295,9 @@ pub fn to_zoned_datetime(default_timezone: &str) -> impl Fn(&str) -> Option<Fort
             let datetime_str = &s[0..captures.get(0)?.start()];
 
             // Handle Z suffix - convert to +00:00 for parsing
-            let datetime_str = if datetime_str.ends_with('Z') {
-                format!("{}+00:00", &datetime_str[..datetime_str.len()-1])
-            } else {
-                datetime_str.to_string()
+            let datetime_str = match datetime_str.strip_suffix('Z') {
+                Some(without_z) => format!("{without_z}+00:00"),
+                None => datetime_str.to_string(),
             };
 
             // Parse datetime (may have offset)
@@ -309,8 +308,11 @@ pub fn to_zoned_datetime(default_timezone: &str) -> impl Fn(&str) -> Option<Fort
             }
 
             // Try simple format without offset - parse in the target timezone
-            if let Ok(naive_dt) = chrono::NaiveDateTime::parse_from_str(&datetime_str, "%Y-%m-%dT%H:%M:%S") {
-                return tz.from_local_datetime(&naive_dt)
+            if let Ok(naive_dt) =
+                chrono::NaiveDateTime::parse_from_str(&datetime_str, "%Y-%m-%dT%H:%M:%S")
+            {
+                return tz
+                    .from_local_datetime(&naive_dt)
                     .earliest()
                     .map(ForthicValue::DateTime);
             }
@@ -366,14 +368,14 @@ mod tests {
         assert_eq!(to_int("42"), Some(ForthicValue::Int(42)));
         assert_eq!(to_int("-10"), Some(ForthicValue::Int(-10)));
         assert_eq!(to_int("0"), Some(ForthicValue::Int(0)));
-        assert_eq!(to_int("3.14"), None); // Has decimal
+        assert_eq!(to_int("3.25"), None); // Has decimal
         assert_eq!(to_int("42abc"), None); // Invalid
         assert_eq!(to_int("abc"), None);
     }
 
     #[test]
     fn test_to_float() {
-        assert_eq!(to_float("3.14"), Some(ForthicValue::Float(3.14)));
+        assert_eq!(to_float("3.25"), Some(ForthicValue::Float(3.25)));
         assert_eq!(to_float("-2.5"), Some(ForthicValue::Float(-2.5)));
         assert_eq!(to_float("0.0"), Some(ForthicValue::Float(0.0)));
         assert_eq!(to_float("42"), None); // No decimal

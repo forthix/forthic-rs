@@ -65,7 +65,9 @@ impl DateTimeModule {
     }
 
     fn word_today(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
-        let today = Utc::now().with_timezone(&Self::context_tz(context)).date_naive();
+        let today = Utc::now()
+            .with_timezone(&Self::context_tz(context))
+            .date_naive();
         context.stack_push(ForthicValue::Date(today));
         Ok(())
     }
@@ -88,7 +90,10 @@ impl DateTimeModule {
         module.add_exportable_word(word);
 
         // >DATETIME
-        let word = Arc::new(ModuleWord::new(">DATETIME".to_string(), Self::word_to_datetime));
+        let word = Arc::new(ModuleWord::new(
+            ">DATETIME".to_string(),
+            Self::word_to_datetime,
+        ));
         module.add_exportable_word(word);
 
         // AT
@@ -184,15 +189,24 @@ impl DateTimeModule {
 
     fn register_conversion_from_words(module: &mut Module) {
         // TIME>STR
-        let word = Arc::new(ModuleWord::new("TIME>STR".to_string(), Self::word_time_to_str));
+        let word = Arc::new(ModuleWord::new(
+            "TIME>STR".to_string(),
+            Self::word_time_to_str,
+        ));
         module.add_exportable_word(word);
 
         // DATE>STR
-        let word = Arc::new(ModuleWord::new("DATE>STR".to_string(), Self::word_date_to_str));
+        let word = Arc::new(ModuleWord::new(
+            "DATE>STR".to_string(),
+            Self::word_date_to_str,
+        ));
         module.add_exportable_word(word);
 
         // DATE>INT
-        let word = Arc::new(ModuleWord::new("DATE>INT".to_string(), Self::word_date_to_int));
+        let word = Arc::new(ModuleWord::new(
+            "DATE>INT".to_string(),
+            Self::word_date_to_int,
+        ));
         module.add_exportable_word(word);
     }
 
@@ -242,11 +256,17 @@ impl DateTimeModule {
 
     fn register_timestamp_words(module: &mut Module) {
         // >TIMESTAMP
-        let word = Arc::new(ModuleWord::new(">TIMESTAMP".to_string(), Self::word_to_timestamp));
+        let word = Arc::new(ModuleWord::new(
+            ">TIMESTAMP".to_string(),
+            Self::word_to_timestamp,
+        ));
         module.add_exportable_word(word);
 
         // TIMESTAMP>DATETIME
-        let word = Arc::new(ModuleWord::new("TIMESTAMP>DATETIME".to_string(), Self::word_timestamp_to_datetime));
+        let word = Arc::new(ModuleWord::new(
+            "TIMESTAMP>DATETIME".to_string(),
+            Self::word_timestamp_to_datetime,
+        ));
         module.add_exportable_word(word);
     }
 
@@ -262,7 +282,9 @@ impl DateTimeModule {
         Ok(())
     }
 
-    fn word_timestamp_to_datetime(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+    fn word_timestamp_to_datetime(
+        context: &mut dyn InterpreterContext,
+    ) -> Result<(), ForthicError> {
         let val = context.stack_pop()?;
 
         let result = match val {
@@ -289,7 +311,10 @@ impl DateTimeModule {
         module.add_exportable_word(word);
 
         // SUBTRACT-DATES
-        let word = Arc::new(ModuleWord::new("SUBTRACT-DATES".to_string(), Self::word_subtract_dates));
+        let word = Arc::new(ModuleWord::new(
+            "SUBTRACT-DATES".to_string(),
+            Self::word_subtract_dates,
+        ));
         module.add_exportable_word(word);
     }
 

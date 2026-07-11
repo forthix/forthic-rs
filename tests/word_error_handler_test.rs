@@ -1,8 +1,9 @@
+// ForthicError is large; accepted trade-off (see lib.rs / backlog item 11)
+#![allow(clippy::result_large_err)]
+
 use forthic::errors::ForthicError;
 use forthic::literals::ForthicValue;
-use forthic::module::{
-    InterpreterContext, Module, ModuleWord, Word, WordErrorHandler,
-};
+use forthic::module::{InterpreterContext, Module, ModuleWord, Word, WordErrorHandler};
 use std::sync::{Arc, Mutex};
 
 // Mock interpreter context for testing
@@ -243,8 +244,14 @@ fn test_multiple_handlers_first_succeeds() {
     let result = word.execute(&mut ctx);
 
     assert!(result.is_ok());
-    assert!(*handler1_called.lock().unwrap(), "First handler should be called");
-    assert!(!*handler2_called.lock().unwrap(), "Second handler should not be called when first succeeds");
+    assert!(
+        *handler1_called.lock().unwrap(),
+        "First handler should be called"
+    );
+    assert!(
+        !*handler2_called.lock().unwrap(),
+        "Second handler should not be called when first succeeds"
+    );
 }
 
 #[test]
@@ -294,8 +301,14 @@ fn test_multiple_handlers_first_fails() {
     let result = word.execute(&mut ctx);
 
     assert!(result.is_ok());
-    assert!(*handler1_called.lock().unwrap(), "First handler should be called");
-    assert!(*handler2_called.lock().unwrap(), "Second handler should be called when first fails");
+    assert!(
+        *handler1_called.lock().unwrap(),
+        "First handler should be called"
+    );
+    assert!(
+        *handler2_called.lock().unwrap(),
+        "Second handler should be called when first fails"
+    );
 }
 
 #[test]
@@ -338,8 +351,14 @@ fn test_all_handlers_fail() {
     let result = word.execute(&mut ctx);
 
     assert!(result.is_err());
-    assert!(*handler1_called.lock().unwrap(), "First handler should be called");
-    assert!(*handler2_called.lock().unwrap(), "Second handler should be called");
+    assert!(
+        *handler1_called.lock().unwrap(),
+        "First handler should be called"
+    );
+    assert!(
+        *handler2_called.lock().unwrap(),
+        "Second handler should be called"
+    );
 }
 
 // IntentionalStopError Tests
@@ -379,8 +398,14 @@ fn test_intentional_stop_error_bypasses_handlers() {
     let result = word.execute(&mut ctx);
 
     assert!(result.is_err());
-    assert!(matches!(result.unwrap_err(), ForthicError::IntentionalStop { .. }));
-    assert!(!*handler_called.lock().unwrap(), "Handler should not be called for IntentionalStopError");
+    assert!(matches!(
+        result.unwrap_err(),
+        ForthicError::IntentionalStop { .. }
+    ));
+    assert!(
+        !*handler_called.lock().unwrap(),
+        "Handler should not be called for IntentionalStopError"
+    );
 }
 
 // Integration Tests

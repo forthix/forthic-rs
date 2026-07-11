@@ -194,11 +194,17 @@ impl RecordModule {
         module.add_exportable_word(word);
 
         // INVERT-KEYS
-        let word = Arc::new(ModuleWord::new("INVERT-KEYS".to_string(), Self::word_invert_keys));
+        let word = Arc::new(ModuleWord::new(
+            "INVERT-KEYS".to_string(),
+            Self::word_invert_keys,
+        ));
         module.add_exportable_word(word);
 
         // REC-DEFAULTS
-        let word = Arc::new(ModuleWord::new("REC-DEFAULTS".to_string(), Self::word_rec_defaults));
+        let word = Arc::new(ModuleWord::new(
+            "REC-DEFAULTS".to_string(),
+            Self::word_rec_defaults,
+        ));
         module.add_exportable_word(word);
 
         // <DEL
@@ -260,7 +266,7 @@ impl RecordModule {
                         for (second_key, value) in sub_rec {
                             inverted
                                 .entry(second_key)
-                                .or_insert_with(HashMap::new)
+                                .or_default()
                                 .insert(first_key.clone(), value);
                         }
                     }
@@ -361,7 +367,10 @@ impl RecordModule {
 
         let result = match container {
             ForthicValue::Record(rec) => {
-                let keys: Vec<_> = rec.keys().map(|k| ForthicValue::String(k.clone())).collect();
+                let keys: Vec<_> = rec
+                    .keys()
+                    .map(|k| ForthicValue::String(k.clone()))
+                    .collect();
                 ForthicValue::Array(keys)
             }
             ForthicValue::Array(arr) => {

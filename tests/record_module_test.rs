@@ -1,6 +1,6 @@
 use forthic::literals::ForthicValue;
-use forthic::modules::standard::RecordModule;
 use forthic::module::{InterpreterContext, Module};
+use forthic::modules::standard::RecordModule;
 use std::collections::HashMap;
 
 // Mock interpreter context for testing
@@ -24,11 +24,13 @@ impl InterpreterContext for MockContext {
     }
 
     fn stack_pop(&mut self) -> Result<ForthicValue, forthic::ForthicError> {
-        self.stack.pop().ok_or(forthic::ForthicError::StackUnderflow {
-            forthic: "test".to_string(),
-            location: None,
-            cause: None,
-        })
+        self.stack
+            .pop()
+            .ok_or(forthic::ForthicError::StackUnderflow {
+                forthic: "test".to_string(),
+                location: None,
+                cause: None,
+            })
     }
 
     fn stack_peek(&self) -> Option<&ForthicValue> {
@@ -80,7 +82,10 @@ fn test_rec() {
 
     let result = ctx.stack.pop().unwrap();
     if let ForthicValue::Record(rec) = result {
-        assert_eq!(rec.get("name"), Some(&ForthicValue::String("Alice".to_string())));
+        assert_eq!(
+            rec.get("name"),
+            Some(&ForthicValue::String("Alice".to_string()))
+        );
         assert_eq!(rec.get("age"), Some(&ForthicValue::Int(30)));
     } else {
         panic!("Expected record");
@@ -101,7 +106,10 @@ fn test_rec_at() {
     ctx.stack.push(ForthicValue::String("name".to_string()));
     word.execute(&mut ctx).unwrap();
 
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::String("Bob".to_string())));
+    assert_eq!(
+        ctx.stack.pop(),
+        Some(ForthicValue::String("Bob".to_string()))
+    );
 }
 
 #[test]
@@ -123,7 +131,10 @@ fn test_rec_at_nested() {
     ]));
     word.execute(&mut ctx).unwrap();
 
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::String("NYC".to_string())));
+    assert_eq!(
+        ctx.stack.pop(),
+        Some(ForthicValue::String("NYC".to_string()))
+    );
 }
 
 #[test]
@@ -132,7 +143,10 @@ fn test_set_rec() {
     let mut ctx = MockContext::new();
 
     let mut rec = HashMap::new();
-    rec.insert("name".to_string(), ForthicValue::String("Alice".to_string()));
+    rec.insert(
+        "name".to_string(),
+        ForthicValue::String("Alice".to_string()),
+    );
 
     let word = module.module().find_word("<REC!").unwrap();
     ctx.stack.push(ForthicValue::Record(rec));
@@ -143,7 +157,10 @@ fn test_set_rec() {
     let result = ctx.stack.pop().unwrap();
     if let ForthicValue::Record(rec) = result {
         assert_eq!(rec.get("age"), Some(&ForthicValue::Int(30)));
-        assert_eq!(rec.get("name"), Some(&ForthicValue::String("Alice".to_string())));
+        assert_eq!(
+            rec.get("name"),
+            Some(&ForthicValue::String("Alice".to_string()))
+        );
     } else {
         panic!("Expected record");
     }
@@ -226,7 +243,10 @@ fn test_rec_defaults() {
     let mut ctx = MockContext::new();
 
     let mut rec = HashMap::new();
-    rec.insert("name".to_string(), ForthicValue::String("Alice".to_string()));
+    rec.insert(
+        "name".to_string(),
+        ForthicValue::String("Alice".to_string()),
+    );
     rec.insert("age".to_string(), ForthicValue::Null);
 
     let word = module.module().find_word("REC-DEFAULTS").unwrap();
@@ -246,8 +266,14 @@ fn test_rec_defaults() {
     let result = ctx.stack.pop().unwrap();
     if let ForthicValue::Record(rec) = result {
         assert_eq!(rec.get("age"), Some(&ForthicValue::Int(25))); // Was null, so replaced
-        assert_eq!(rec.get("city"), Some(&ForthicValue::String("NYC".to_string()))); // Was missing, so added
-        assert_eq!(rec.get("name"), Some(&ForthicValue::String("Alice".to_string()))); // Unchanged
+        assert_eq!(
+            rec.get("city"),
+            Some(&ForthicValue::String("NYC".to_string()))
+        ); // Was missing, so added
+        assert_eq!(
+            rec.get("name"),
+            Some(&ForthicValue::String("Alice".to_string()))
+        ); // Unchanged
     } else {
         panic!("Expected record");
     }
@@ -259,7 +285,10 @@ fn test_del() {
     let mut ctx = MockContext::new();
 
     let mut rec = HashMap::new();
-    rec.insert("name".to_string(), ForthicValue::String("Alice".to_string()));
+    rec.insert(
+        "name".to_string(),
+        ForthicValue::String("Alice".to_string()),
+    );
     rec.insert("age".to_string(), ForthicValue::Int(30));
 
     let word = module.module().find_word("<DEL").unwrap();
@@ -285,7 +314,10 @@ fn test_keys() {
     let mut ctx = MockContext::new();
 
     let mut rec = HashMap::new();
-    rec.insert("name".to_string(), ForthicValue::String("Alice".to_string()));
+    rec.insert(
+        "name".to_string(),
+        ForthicValue::String("Alice".to_string()),
+    );
     rec.insert("age".to_string(), ForthicValue::Int(30));
 
     let word = module.module().find_word("KEYS").unwrap();

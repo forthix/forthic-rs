@@ -36,10 +36,18 @@ async fn test_auth_required_when_token_set() {
     let server = TestServer::start(with_token("sekret")).await;
 
     // No Authorization header
-    let response = server.request().body(any_valid_envelope()).send().await.unwrap();
+    let response = server
+        .request()
+        .body(any_valid_envelope())
+        .send()
+        .await
+        .unwrap();
     assert_eq!(response.status(), 401);
     assert_eq!(
-        response.headers().get("www-authenticate").and_then(|v| v.to_str().ok()),
+        response
+            .headers()
+            .get("www-authenticate")
+            .and_then(|v| v.to_str().ok()),
         Some("Bearer")
     );
     let body: Value = response.json().await.unwrap();
@@ -84,7 +92,12 @@ async fn test_auth_required_when_token_set() {
 #[tokio::test]
 async fn test_no_token_means_open_on_loopback() {
     let server = TestServer::start(ServeOptions::default()).await;
-    let response = server.request().body(any_valid_envelope()).send().await.unwrap();
+    let response = server
+        .request()
+        .body(any_valid_envelope())
+        .send()
+        .await
+        .unwrap();
     assert_eq!(response.status(), 200);
     server.stop().await;
 }
@@ -188,7 +201,10 @@ async fn test_error_details_stripped_by_default() {
     let server = TestServer::start(ServeOptions::default()).await;
     // Unterminated string: a tokenizer error, which carries a location
     let (_, body) = server
-        .rpc("executeWord", json!({ "word_name": "'unterminated", "stack": [] }))
+        .rpc(
+            "executeWord",
+            json!({ "word_name": "'unterminated", "stack": [] }),
+        )
         .await;
     let data = &body["error"]["data"];
     assert_eq!(data["error_type"], "UnterminatedString");
@@ -205,7 +221,10 @@ async fn test_error_details_exposed_when_enabled() {
     })
     .await;
     let (_, body) = server
-        .rpc("executeWord", json!({ "word_name": "'unterminated", "stack": [] }))
+        .rpc(
+            "executeWord",
+            json!({ "word_name": "'unterminated", "stack": [] }),
+        )
         .await;
     let data = &body["error"]["data"];
     assert!(

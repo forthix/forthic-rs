@@ -661,7 +661,8 @@ impl Module {
     /// Add a variable to the module
     pub fn add_variable(&mut self, name: String, value: ForthicValue) {
         if !self.variables.contains_key(&name) {
-            self.variables.insert(name.clone(), Variable::new(name, value));
+            self.variables
+                .insert(name.clone(), Variable::new(name, value));
         }
     }
 
@@ -688,7 +689,7 @@ impl Module {
 
         self.module_prefixes
             .entry(module_name)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(prefix);
     }
 
@@ -712,7 +713,11 @@ impl Module {
             }
         }
 
-        self.register_module(new_module.get_name().to_string(), prefix.to_string(), new_module);
+        self.register_module(
+            new_module.get_name().to_string(),
+            prefix.to_string(),
+            new_module,
+        );
     }
 
     /// Duplicate the module (shallow copy of words, deep copy of variables)
@@ -854,7 +859,10 @@ mod tests {
     #[test]
     fn test_module_add_word() {
         let mut module = Module::new("test".to_string());
-        let word = Arc::new(PushValueWord::new("WORD".to_string(), ForthicValue::Int(42)));
+        let word = Arc::new(PushValueWord::new(
+            "WORD".to_string(),
+            ForthicValue::Int(42),
+        ));
 
         module.add_word(word);
         assert!(module.find_word("WORD").is_some());
@@ -863,7 +871,10 @@ mod tests {
     #[test]
     fn test_module_find_word() {
         let mut module = Module::new("test".to_string());
-        let word = Arc::new(PushValueWord::new("WORD".to_string(), ForthicValue::Int(42)));
+        let word = Arc::new(PushValueWord::new(
+            "WORD".to_string(),
+            ForthicValue::Int(42),
+        ));
 
         module.add_word(word);
 
@@ -878,8 +889,14 @@ mod tests {
     fn test_module_exportable_words() {
         let mut module = Module::new("test".to_string());
 
-        let word1 = Arc::new(PushValueWord::new("PUBLIC".to_string(), ForthicValue::Int(1)));
-        let word2 = Arc::new(PushValueWord::new("PRIVATE".to_string(), ForthicValue::Int(2)));
+        let word1 = Arc::new(PushValueWord::new(
+            "PUBLIC".to_string(),
+            ForthicValue::Int(1),
+        ));
+        let word2 = Arc::new(PushValueWord::new(
+            "PRIVATE".to_string(),
+            ForthicValue::Int(2),
+        ));
 
         module.add_exportable_word(word1);
         module.add_word(word2);
@@ -908,7 +925,10 @@ mod tests {
     #[test]
     fn test_module_import_unprefixed() {
         let mut module1 = Module::new("module1".to_string());
-        let word = Arc::new(PushValueWord::new("WORD".to_string(), ForthicValue::Int(42)));
+        let word = Arc::new(PushValueWord::new(
+            "WORD".to_string(),
+            ForthicValue::Int(42),
+        ));
         module1.add_exportable_word(word);
 
         let mut module2 = Module::new("module2".to_string());
@@ -921,7 +941,10 @@ mod tests {
     #[test]
     fn test_module_import_prefixed() {
         let mut module1 = Module::new("module1".to_string());
-        let word = Arc::new(PushValueWord::new("WORD".to_string(), ForthicValue::Int(42)));
+        let word = Arc::new(PushValueWord::new(
+            "WORD".to_string(),
+            ForthicValue::Int(42),
+        ));
         module1.add_exportable_word(word);
 
         let mut module2 = Module::new("module2".to_string());
@@ -973,7 +996,10 @@ mod tests {
         let mut module = Module::new("test".to_string());
         module.add_variable("var".to_string(), ForthicValue::Int(42));
 
-        let word = Arc::new(PushValueWord::new("WORD".to_string(), ForthicValue::Int(99)));
+        let word = Arc::new(PushValueWord::new(
+            "WORD".to_string(),
+            ForthicValue::Int(99),
+        ));
         module.add_word(word);
 
         let dup = module.dup();

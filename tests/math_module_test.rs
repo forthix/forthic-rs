@@ -1,6 +1,6 @@
 use forthic::literals::ForthicValue;
-use forthic::modules::standard::MathModule;
 use forthic::module::{InterpreterContext, Module};
+use forthic::modules::standard::MathModule;
 
 // Mock interpreter context for testing
 struct MockContext {
@@ -23,11 +23,13 @@ impl InterpreterContext for MockContext {
     }
 
     fn stack_pop(&mut self) -> Result<ForthicValue, forthic::ForthicError> {
-        self.stack.pop().ok_or(forthic::ForthicError::StackUnderflow {
-            forthic: "test".to_string(),
-            location: None,
-            cause: None,
-        })
+        self.stack
+            .pop()
+            .ok_or(forthic::ForthicError::StackUnderflow {
+                forthic: "test".to_string(),
+                location: None,
+                cause: None,
+            })
     }
 
     fn stack_peek(&self) -> Option<&ForthicValue> {

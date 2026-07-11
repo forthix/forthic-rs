@@ -4,6 +4,9 @@
 //! from (or verified against) the forthic-ts correctness scrub (#26, #29,
 //! #31). Runs without features — these are core-interpreter behaviors.
 
+// ForthicError is large; accepted trade-off (see lib.rs / backlog item 11)
+#![allow(clippy::result_large_err)]
+
 use chrono::TimeZone;
 use forthic::errors::{CodeLocation, ForthicError};
 use forthic::interpreter::Interpreter;
@@ -37,7 +40,10 @@ fn test_formatter_survives_degenerate_location() {
         cause: None,
     };
     let formatted = err.format_with_context();
-    assert!(formatted.contains("^"), "still renders a caret: {formatted}");
+    assert!(
+        formatted.contains("^"),
+        "still renders a caret: {formatted}"
+    );
 }
 
 #[test]
@@ -83,11 +89,13 @@ fn test_datetime_equality_requires_same_timezone() {
     // ts compares Temporal values by ISO string (includes the tz
     // annotation): the same instant in different timezones is NOT equal
     let la: chrono_tz::Tz = "America/Los_Angeles".parse().unwrap();
-    let instant_utc = chrono_tz::UTC.with_ymd_and_hms(2020, 6, 5, 17, 15, 0).unwrap();
+    let instant_utc = chrono_tz::UTC
+        .with_ymd_and_hms(2020, 6, 5, 17, 15, 0)
+        .unwrap();
     let same_instant_la = instant_utc.with_timezone(&la);
 
     let mut interp = Interpreter::standard("UTC");
-    interp.stack_push(ForthicValue::DateTime(instant_utc.clone()));
+    interp.stack_push(ForthicValue::DateTime(instant_utc));
     interp.stack_push(ForthicValue::DateTime(same_instant_la));
     interp.run("==").unwrap();
     assert_eq!(
@@ -95,7 +103,7 @@ fn test_datetime_equality_requires_same_timezone() {
         ForthicValue::Bool(false)
     );
 
-    interp.stack_push(ForthicValue::DateTime(instant_utc.clone()));
+    interp.stack_push(ForthicValue::DateTime(instant_utc));
     interp.stack_push(ForthicValue::DateTime(instant_utc));
     interp.run("==").unwrap();
     assert_eq!(

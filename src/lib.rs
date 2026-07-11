@@ -3,6 +3,12 @@
 //! Forthic is designed to enable powerful data transformations and orchestration
 //! across multiple runtime environments.
 
+// ForthicError is a large enum (variants carry source snippets and locations),
+// so every Result<_, ForthicError> trips clippy::result_large_err. Boxing the
+// error payload is a real refactor tracked in plans/TS-PARITY-BACKLOG.md;
+// until then the size is an accepted trade-off.
+#![allow(clippy::result_large_err)]
+
 pub mod errors;
 pub mod interpreter;
 #[cfg(feature = "jsonrpc")]

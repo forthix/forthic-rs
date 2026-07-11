@@ -1,6 +1,6 @@
 use forthic::literals::ForthicValue;
-use forthic::modules::standard::StringModule;
 use forthic::module::{InterpreterContext, Module};
+use forthic::modules::standard::StringModule;
 
 // Mock interpreter context for testing
 struct MockContext {
@@ -23,11 +23,13 @@ impl InterpreterContext for MockContext {
     }
 
     fn stack_pop(&mut self) -> Result<ForthicValue, forthic::ForthicError> {
-        self.stack.pop().ok_or(forthic::ForthicError::StackUnderflow {
-            forthic: "test".to_string(),
-            location: None,
-            cause: None,
-        })
+        self.stack
+            .pop()
+            .ok_or(forthic::ForthicError::StackUnderflow {
+                forthic: "test".to_string(),
+                location: None,
+                cause: None,
+            })
     }
 
     fn stack_peek(&self) -> Option<&ForthicValue> {
@@ -68,7 +70,10 @@ fn test_to_str_int() {
     ctx.stack.push(ForthicValue::Int(42));
     word.execute(&mut ctx).unwrap();
 
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::String("42".to_string())));
+    assert_eq!(
+        ctx.stack.pop(),
+        Some(ForthicValue::String("42".to_string()))
+    );
 }
 
 #[test]
@@ -80,7 +85,10 @@ fn test_to_str_bool() {
     ctx.stack.push(ForthicValue::Bool(true));
     word.execute(&mut ctx).unwrap();
 
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::String("true".to_string())));
+    assert_eq!(
+        ctx.stack.pop(),
+        Some(ForthicValue::String("true".to_string()))
+    );
 }
 
 #[test]
@@ -89,10 +97,14 @@ fn test_url_encode() {
     let mut ctx = MockContext::new();
 
     let word = module.module().find_word("URL-ENCODE").unwrap();
-    ctx.stack.push(ForthicValue::String("hello world".to_string()));
+    ctx.stack
+        .push(ForthicValue::String("hello world".to_string()));
     word.execute(&mut ctx).unwrap();
 
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::String("hello%20world".to_string())));
+    assert_eq!(
+        ctx.stack.pop(),
+        Some(ForthicValue::String("hello%20world".to_string()))
+    );
 }
 
 #[test]
@@ -101,10 +113,14 @@ fn test_url_decode() {
     let mut ctx = MockContext::new();
 
     let word = module.module().find_word("URL-DECODE").unwrap();
-    ctx.stack.push(ForthicValue::String("hello%20world".to_string()));
+    ctx.stack
+        .push(ForthicValue::String("hello%20world".to_string()));
     word.execute(&mut ctx).unwrap();
 
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::String("hello world".to_string())));
+    assert_eq!(
+        ctx.stack.pop(),
+        Some(ForthicValue::String("hello world".to_string()))
+    );
 }
 
 // Transform Tests
@@ -115,10 +131,14 @@ fn test_lowercase() {
     let mut ctx = MockContext::new();
 
     let word = module.module().find_word("LOWERCASE").unwrap();
-    ctx.stack.push(ForthicValue::String("Hello World".to_string()));
+    ctx.stack
+        .push(ForthicValue::String("Hello World".to_string()));
     word.execute(&mut ctx).unwrap();
 
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::String("hello world".to_string())));
+    assert_eq!(
+        ctx.stack.pop(),
+        Some(ForthicValue::String("hello world".to_string()))
+    );
 }
 
 #[test]
@@ -127,10 +147,14 @@ fn test_uppercase() {
     let mut ctx = MockContext::new();
 
     let word = module.module().find_word("UPPERCASE").unwrap();
-    ctx.stack.push(ForthicValue::String("Hello World".to_string()));
+    ctx.stack
+        .push(ForthicValue::String("Hello World".to_string()));
     word.execute(&mut ctx).unwrap();
 
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::String("HELLO WORLD".to_string())));
+    assert_eq!(
+        ctx.stack.pop(),
+        Some(ForthicValue::String("HELLO WORLD".to_string()))
+    );
 }
 
 #[test]
@@ -139,10 +163,14 @@ fn test_strip() {
     let mut ctx = MockContext::new();
 
     let word = module.module().find_word("STRIP").unwrap();
-    ctx.stack.push(ForthicValue::String("  hello world  ".to_string()));
+    ctx.stack
+        .push(ForthicValue::String("  hello world  ".to_string()));
     word.execute(&mut ctx).unwrap();
 
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::String("hello world".to_string())));
+    assert_eq!(
+        ctx.stack.pop(),
+        Some(ForthicValue::String("hello world".to_string()))
+    );
 }
 
 #[test]
@@ -151,10 +179,14 @@ fn test_ascii() {
     let mut ctx = MockContext::new();
 
     let word = module.module().find_word("ASCII").unwrap();
-    ctx.stack.push(ForthicValue::String("hello\u{1F600}world".to_string()));
+    ctx.stack
+        .push(ForthicValue::String("hello\u{1F600}world".to_string()));
     word.execute(&mut ctx).unwrap();
 
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::String("helloworld".to_string())));
+    assert_eq!(
+        ctx.stack.pop(),
+        Some(ForthicValue::String("helloworld".to_string()))
+    );
 }
 
 // Split/Join Tests
@@ -165,7 +197,8 @@ fn test_split() {
     let mut ctx = MockContext::new();
 
     let word = module.module().find_word("SPLIT").unwrap();
-    ctx.stack.push(ForthicValue::String("hello,world,test".to_string()));
+    ctx.stack
+        .push(ForthicValue::String("hello,world,test".to_string()));
     ctx.stack.push(ForthicValue::String(",".to_string()));
     word.execute(&mut ctx).unwrap();
 
@@ -193,7 +226,10 @@ fn test_join() {
     ctx.stack.push(ForthicValue::String(" ".to_string()));
     word.execute(&mut ctx).unwrap();
 
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::String("hello world".to_string())));
+    assert_eq!(
+        ctx.stack.pop(),
+        Some(ForthicValue::String("hello world".to_string()))
+    );
 }
 
 #[test]
@@ -206,7 +242,10 @@ fn test_concat_two_strings() {
     ctx.stack.push(ForthicValue::String(" world".to_string()));
     word.execute(&mut ctx).unwrap();
 
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::String("hello world".to_string())));
+    assert_eq!(
+        ctx.stack.pop(),
+        Some(ForthicValue::String("hello world".to_string()))
+    );
 }
 
 #[test]
@@ -222,7 +261,10 @@ fn test_concat_array() {
     ]));
     word.execute(&mut ctx).unwrap();
 
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::String("hello world".to_string())));
+    assert_eq!(
+        ctx.stack.pop(),
+        Some(ForthicValue::String("hello world".to_string()))
+    );
 }
 
 // Pattern Tests
@@ -233,12 +275,16 @@ fn test_replace() {
     let mut ctx = MockContext::new();
 
     let word = module.module().find_word("REPLACE").unwrap();
-    ctx.stack.push(ForthicValue::String("hello world".to_string()));
+    ctx.stack
+        .push(ForthicValue::String("hello world".to_string()));
     ctx.stack.push(ForthicValue::String("world".to_string()));
     ctx.stack.push(ForthicValue::String("Rust".to_string()));
     word.execute(&mut ctx).unwrap();
 
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::String("hello Rust".to_string())));
+    assert_eq!(
+        ctx.stack.pop(),
+        Some(ForthicValue::String("hello Rust".to_string()))
+    );
 }
 
 // Constant Tests
@@ -251,7 +297,10 @@ fn test_newline() {
     let word = module.module().find_word("/N").unwrap();
     word.execute(&mut ctx).unwrap();
 
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::String("\n".to_string())));
+    assert_eq!(
+        ctx.stack.pop(),
+        Some(ForthicValue::String("\n".to_string()))
+    );
 }
 
 #[test]
@@ -262,7 +311,10 @@ fn test_carriage_return() {
     let word = module.module().find_word("/R").unwrap();
     word.execute(&mut ctx).unwrap();
 
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::String("\r".to_string())));
+    assert_eq!(
+        ctx.stack.pop(),
+        Some(ForthicValue::String("\r".to_string()))
+    );
 }
 
 #[test]
@@ -273,5 +325,8 @@ fn test_tab() {
     let word = module.module().find_word("/T").unwrap();
     word.execute(&mut ctx).unwrap();
 
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::String("\t".to_string())));
+    assert_eq!(
+        ctx.stack.pop(),
+        Some(ForthicValue::String("\t".to_string()))
+    );
 }
