@@ -12,9 +12,12 @@ repository = "https://github.com/forthic/forthic-rs"
 thiserror = "1.0"
 anyhow = "1.0"
 
-# Async runtime
-tokio = { version = "1", features = ["full"] }
-async-trait = "0.1"
+# The interpreter is deliberately synchronous (see plans/JSONRPC-PLAN.md);
+# the async deps below are optional and enter only via the `jsonrpc` feature.
+axum = { version = "0.8", optional = true }
+http-body-util = { version = "0.1", optional = true }
+subtle = { version = "2", optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "signal", "sync"], optional = true }
 
 # Date/time
 chrono = "0.4"
@@ -37,12 +40,39 @@ colored = { version = "2", optional = true }
 
 [dev-dependencies]
 # Testing
-tokio-test = "0.4"
 proptest = "1.0"
+# HTTP client for the jsonrpc server tests (no TLS needed for localhost)
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+# io-util for raw-socket tests (chunked bodies); merged into the feature-
+# activated tokio for test builds only
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "signal"] }
 
 [features]
 default = []
 cli = ["clap", "rustyline", "colored"]
+# JSON-RPC multi-runtime support (see plans/JSONRPC-PLAN.md)
+jsonrpc = ["dep:axum", "dep:http-body-util", "dep:subtle", "dep:tokio"]
+
+[[bin]]
+name = "forthic-jsonrpc"
+path = "src/bin/forthic-jsonrpc.rs"
+required-features = ["jsonrpc"]
+
+[[test]]
+name = "jsonrpc_serializer_test"
+required-features = ["jsonrpc"]
+
+[[test]]
+name = "jsonrpc_dispatch_test"
+required-features = ["jsonrpc"]
+
+[[test]]
+name = "jsonrpc_server_test"
+required-features = ["jsonrpc"]
+
+[[test]]
+name = "jsonrpc_hardening_test"
+required-features = ["jsonrpc"]
 
 # Binary will be added in Phase 7
 # [[bin]]
