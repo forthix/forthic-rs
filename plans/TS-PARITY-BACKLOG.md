@@ -36,6 +36,10 @@ the spec for anything ported.
 
 ## Tier 2 — Semantic divergences from the post-scrub ts contract
 
+> **Status: all four fixed** (fix/tier2-record-semantics branch, tests in
+> tests/tier2_record_semantics_test.rs). FIRST and TAKE-LAST also landed
+> (were Tier 4 item 14) since the #33 contract covered them.
+
 6. **`Record` should be `IndexMap`, not `HashMap`** (`literals.rs:29`).
    ts #33 made record words rely on insertion order; HashMap has none, so
    rs sorts keys in `NTH`/`LAST` (`array.rs:112,139`) and emits

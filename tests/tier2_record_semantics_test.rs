@@ -213,6 +213,25 @@ fn test_set_ops_unify_int_and_float() {
     );
 }
 
+// ===== >STR (ts parity: null -> "", else JS toString) =====
+
+#[test]
+fn test_to_str_matches_js_semantics() {
+    assert_eq!(run("NULL >STR"), s(""));
+    assert_eq!(run("TRUE >STR"), s("true"));
+    assert_eq!(run("42 >STR"), s("42"));
+    assert_eq!(run("3.25 >STR"), s("3.25"));
+    // JS (3.0).toString() === "3"; Rust Display agrees
+    assert_eq!(run("3.0 >STR"), s("3"));
+    // JS Array.toString: comma-join, null elements empty, nested flattened
+    assert_eq!(run("[ 1 NULL [ 2 3 ] ] >STR"), s("1,,2,3"));
+    // JS Object.toString
+    assert_eq!(run(&format!("{ZAM} >STR")), s("[object Object]"));
+    // Temporal-style ISO forms
+    assert_eq!(run("2020-06-05 >STR"), s("2020-06-05"));
+    assert_eq!(run("9:30 >STR"), s("09:30:00"));
+}
+
 // ===== Wire round-trip order (jsonrpc feature) =====
 
 #[cfg(feature = "jsonrpc")]
