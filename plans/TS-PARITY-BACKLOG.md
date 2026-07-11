@@ -73,7 +73,7 @@ the spec for anything ported.
 
 ## Tier 4 — Missing features (port later; post-fix ts is the spec)
 
-13. **Word locations**: per-definition location tracking (ts #30 design:
+13. **DONE — Word locations**: per-definition location tracking (ts #30 design:
     `word_locations` vec parallel to `words` in DefinitionWord, thread
     `token.location` through `handle_word`) + the interpreter-error
     `with_location` work already listed in JSONRPC-PLAN follow-ups. Note the

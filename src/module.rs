@@ -212,6 +212,14 @@ impl Word for PushValueWord {
 pub struct DefinitionWord {
     name: String,
     words: Vec<Arc<dyn Word>>,
+    /// Per-call-site source location for each entry in `words`,
+    /// parallel-indexed. Stored here rather than on the Word object because
+    /// words are shared between definitions/call sites (one `+` serves every
+    /// definition) — recording on the shared word would let one definition's
+    /// location clobber another's (the bug forthic-ts fixed in #30; here
+    /// `&mut self` through `Arc` makes the shared write uncompilable, so the
+    /// location was simply never recorded).
+    word_locations: Vec<Option<CodeLocation>>,
     location: Option<CodeLocation>,
 }
 
@@ -220,12 +228,14 @@ impl DefinitionWord {
         Self {
             name,
             words: Vec::new(),
+            word_locations: Vec::new(),
             location: None,
         }
     }
 
-    pub fn add_word(&mut self, word: Arc<dyn Word>) {
+    pub fn add_word(&mut self, word: Arc<dyn Word>, location: Option<CodeLocation>) {
         self.words.push(word);
+        self.word_locations.push(location);
     }
 
     pub fn get_words(&self) -> &[Arc<dyn Word>] {
@@ -247,7 +257,7 @@ impl Word for DefinitionWord {
     }
 
     fn execute(&self, context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
-        for word in &self.words {
+        for (i, word) in self.words.iter().enumerate() {
             word.execute(context).map_err(|e| match e {
                 // IntentionalStop is flow control, not failure: hosts match
                 // on it after a debugging stop, so it must keep its identity
@@ -257,7 +267,12 @@ impl Word for DefinitionWord {
                     message: format!("Error executing {}", self.name),
                     inner_error: Box::new(e),
                     call_location: None,
-                    definition_location: self.location.clone(),
+                    // The FAILING word's capture site inside this definition
+                    // (parallel-indexed), falling back to the definition's own
+                    // location
+                    definition_location: self.word_locations[i]
+                        .clone()
+                        .or_else(|| self.location.clone()),
                 },
             })?;
         }
@@ -833,14 +848,14 @@ mod tests {
     #[test]
     fn test_definition_word() {
         let mut def = DefinitionWord::new("TEST".to_string());
-        def.add_word(Arc::new(PushValueWord::new(
-            "ONE".to_string(),
-            ForthicValue::Int(1),
-        )));
-        def.add_word(Arc::new(PushValueWord::new(
-            "TWO".to_string(),
-            ForthicValue::Int(2),
-        )));
+        def.add_word(
+            Arc::new(PushValueWord::new("ONE".to_string(), ForthicValue::Int(1))),
+            None,
+        );
+        def.add_word(
+            Arc::new(PushValueWord::new("TWO".to_string(), ForthicValue::Int(2))),
+            None,
+        );
 
         let mut ctx = MockContext::new();
         def.execute(&mut ctx).unwrap();
