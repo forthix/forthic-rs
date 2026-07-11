@@ -23,6 +23,12 @@ use std::sync::Arc;
 /// array; guard it (same limit as forthic-ts)
 const MAX_MATERIALIZED_ELEMENTS: i64 = 10_000_000;
 
+/// MAP's option flags (see word_map)
+struct MapFlags {
+    with_key: bool,
+    depth: i64,
+}
+
 /// ArrayModule provides array and collection operations
 pub struct ArrayModule {
     module: Module,
@@ -90,6 +96,174 @@ impl ArrayModule {
             Self::word_take_last,
         ));
         module.add_exportable_word(word);
+
+        // MAP
+        let word = Arc::new(ModuleWord::new("MAP".to_string(), Self::word_map));
+        module.add_exportable_word(word);
+    }
+
+    /// MAP: ( items forthic [options] -- result )
+    ///
+    /// Runs `forthic` once per element — the element is pushed, the code
+    /// runs via the context, and the popped result replaces the element.
+    /// Arrays map to arrays; records map their values (keys and insertion
+    /// order preserved). Options (ts parity):
+    /// - `with_key`: push the key (records) or index (arrays) beneath the value
+    /// - `depth` (int): descend nested containers this many levels, mapping
+    ///   scalar leaves (post ts #31: leaves are mapped, never coerced to {})
+    ///
+    /// Errors propagate (Forthic's default `?`-like behavior). For
+    /// error-tolerant mapping, compose with TRY (backlog item 20):
+    /// `[xs] "'F' TRY" MAP`. The ts push_error option is deliberately not
+    /// ported (flag-dependent arity, NULL/failure conflation, operand
+    /// stranding), and the ts `interps` option (parallel interpreters) is
+    /// not supported — the rs interpreter is deliberately synchronous.
+    fn word_map(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let options = Self::pop_options(context);
+        let forthic_val = context.stack_pop()?;
+        let items = context.stack_pop()?;
+
+        let forthic = match forthic_val {
+            ForthicValue::String(s) => s,
+            other => {
+                return Err(ForthicError::InvalidOperation {
+                    forthic: String::new(),
+                    message: format!("MAP requires a Forthic string, got {other:?}"),
+                    location: None,
+                    cause: None,
+                })
+            }
+        };
+
+        let flags = MapFlags {
+            with_key: options
+                .as_ref()
+                .and_then(|o| o.get_bool("with_key"))
+                .unwrap_or(false),
+            depth: options
+                .as_ref()
+                .and_then(|o| o.get_int("depth"))
+                .unwrap_or(0),
+        };
+
+        let result = match items {
+            // Null/empty in, same out
+            ForthicValue::Null => {
+                context.stack_push(ForthicValue::Null);
+                return Ok(());
+            }
+            ForthicValue::Array(arr) if arr.is_empty() => {
+                context.stack_push(ForthicValue::Array(vec![]));
+                return Ok(());
+            }
+            ForthicValue::Array(arr) => ForthicValue::Array(Self::map_descend_array(
+                context,
+                &arr,
+                &forthic,
+                flags.depth,
+                &flags,
+            )?),
+            ForthicValue::Record(rec) => ForthicValue::Record(Self::map_descend_record(
+                context,
+                &rec,
+                &forthic,
+                flags.depth,
+                &flags,
+            )?),
+            // Non-container: pass through unchanged (ts's behavior here is a
+            // JS truthiness accident — {} for most scalars — not worth parity)
+            other => other,
+        };
+
+        context.stack_push(result);
+        Ok(())
+    }
+
+    fn map_descend_array(
+        context: &mut dyn InterpreterContext,
+        items: &[ForthicValue],
+        forthic: &str,
+        depth: i64,
+        flags: &MapFlags,
+    ) -> Result<Vec<ForthicValue>, ForthicError> {
+        let mut accum = Vec::with_capacity(items.len());
+        for (i, item) in items.iter().enumerate() {
+            match item {
+                ForthicValue::Array(inner) if depth > 0 => {
+                    accum.push(ForthicValue::Array(Self::map_descend_array(
+                        context,
+                        inner,
+                        forthic,
+                        depth - 1,
+                        flags,
+                    )?));
+                }
+                ForthicValue::Record(inner) if depth > 0 => {
+                    accum.push(ForthicValue::Record(Self::map_descend_record(
+                        context,
+                        inner,
+                        forthic,
+                        depth - 1,
+                        flags,
+                    )?));
+                }
+                // Scalar leaf (or depth exhausted): map it (ts #31 — never
+                // coerce leaves to empty containers)
+                leaf => accum.push(Self::map_one(
+                    context,
+                    ForthicValue::Int(i as i64),
+                    leaf.clone(),
+                    forthic,
+                    flags,
+                )?),
+            }
+        }
+        Ok(accum)
+    }
+
+    fn map_descend_record(
+        context: &mut dyn InterpreterContext,
+        items: &IndexMap<String, ForthicValue>,
+        forthic: &str,
+        depth: i64,
+        flags: &MapFlags,
+    ) -> Result<IndexMap<String, ForthicValue>, ForthicError> {
+        let mut accum = IndexMap::with_capacity(items.len());
+        for (k, item) in items {
+            let mapped = match item {
+                ForthicValue::Array(inner) if depth > 0 => ForthicValue::Array(
+                    Self::map_descend_array(context, inner, forthic, depth - 1, flags)?,
+                ),
+                ForthicValue::Record(inner) if depth > 0 => ForthicValue::Record(
+                    Self::map_descend_record(context, inner, forthic, depth - 1, flags)?,
+                ),
+                leaf => Self::map_one(
+                    context,
+                    ForthicValue::String(k.clone()),
+                    leaf.clone(),
+                    forthic,
+                    flags,
+                )?,
+            };
+            accum.insert(k.clone(), mapped);
+        }
+        Ok(accum)
+    }
+
+    /// Map one leaf: push [key] value, run the forthic, pop the result
+    fn map_one(
+        context: &mut dyn InterpreterContext,
+        key: ForthicValue,
+        value: ForthicValue,
+        forthic: &str,
+        flags: &MapFlags,
+    ) -> Result<ForthicValue, ForthicError> {
+        if flags.with_key {
+            context.stack_push(key);
+        }
+        context.stack_push(value);
+        context.run(forthic)?;
+        context.stack_pop()
     }
 
     fn word_first(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {

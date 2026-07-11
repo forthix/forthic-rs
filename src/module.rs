@@ -47,6 +47,20 @@ pub trait InterpreterContext {
     fn get_timezone(&self) -> &str {
         "UTC"
     }
+
+    /// Execute Forthic code against this context. This is what higher-order
+    /// words (MAP, SORT-with-comparator, ...) use to run their code argument
+    /// per element. The real Interpreter overrides this with its `run`;
+    /// the default errors so simple contexts (test mocks) keep compiling
+    /// without pretending to support execution.
+    fn run(&mut self, code: &str) -> Result<(), ForthicError> {
+        Err(ForthicError::InvalidOperation {
+            forthic: code.to_string(),
+            message: "This interpreter context does not support executing Forthic".to_string(),
+            location: None,
+            cause: None,
+        })
+    }
 }
 
 /// Word error handler trait - handles errors during word execution

@@ -79,7 +79,7 @@ the spec for anything ported.
     `with_location` work already listed in JSONRPC-PLAN follow-ups. Note the
     ts *race* (shared Word mutated at compile time) is uncompilable in rs
     (`&mut self` through `Arc` is refused) — only the feature is missing.
-14. **Missing stdlib words**: `MAP`, `SORT`, `FIRST`, `TAKE-LAST`,
+14. **Missing stdlib words** (MAP done — feat/map-word, with the InterpreterContext::run higher-order door): `MAP`, `SORT`, `FIRST`, `TAKE-LAST`,
     `NUMBER?`, JQ path words, etc. Port to post-#31/#32/#33 contracts
     (e.g. MAP's fixed depth semantics), never pre-fix behavior. Never port
     `|REC@` (removed in #27 for injection).
@@ -121,6 +121,8 @@ mirrors in the same pass — the plain-time extension (ts #36) is the model.
     Remaining task: document the unit in each repo (word docs for
     LENGTH/STR-LENGTH/SUBSTR + a note in the proto's word_location field).
 19. **Candidates worth a decision, not yet committed to:**
+    - ~~MAP push_error stranding~~ — superseded by item 20: push_error is
+      removed entirely in favor of TRY.
     - DateTime `==` timezone-sensitivity: same instant in different
       timezones is currently NOT equal (ISO-string comparison in ts,
       matched in rs). Alternative: instant equality.
@@ -128,6 +130,39 @@ mirrors in the same pass — the plain-time extension (ts #36) is the model.
       `Int(5)`): inherent to JS's single number type; a `float_value`-
       always-for-floats rule on the ts side would fix rs↔rs and
       python↔rs fidelity through a ts hop.
+
+20. **TRY — general error handling as data (SPEC, both repos, ts leads).**
+    Forthic's default error behavior is already Rust's `?` (auto-propagate);
+    TRY adds the other half of the Result model: holding an error as a value.
+    Replaces MAP's push_error option (removed cold from ts; never ships in
+    rs — it changed MAP's arity via a flag, conflated NULL-result with
+    failure, used host error objects, and stranded operands on failure in
+    both runtimes).
+
+    Vocabulary (Rust Result as the guessable model):
+    - `TRY ( forthic -- outcome )` — runs the code. Success: pops the top
+      value as the payload, pushes `{"ok": value}`. Failure: restores the
+      stack to a byte-for-byte snapshot taken at entry (transactional for
+      the stack; side effects — variables, registrations — persist, like
+      catch_unwind), restores the module stack to entry depth (fixes the
+      latent dangling-module leak), and pushes `{"error": <ErrorInfo>}`
+      where ErrorInfo is the SAME shape as the JSON-RPC wire error
+      (message, error_type, context, location when available).
+    - `OK? / ERROR? ( outcome -- bool )` — structural: checks for the
+      "ok"/"error" key, so any record with those keys participates
+      (documented, very Forthic).
+    - `UNWRAP ( outcome -- value )` — ok: pushes the value. error:
+      re-raises, preserving message/error_type/location in the raised
+      error (like Rust, the concrete variant becomes a generic wrapper —
+      Err(e).unwrap() panics with Debug of e, not e itself).
+    - `UNWRAP-OR ( outcome default -- value )`.
+    - No MAP-OK/MAP-ERR: collides with MAP's container meaning; if branch
+      transforms are ever needed, name them ON-OK/ON-ERROR.
+
+    Law (the guessability contract, tested in both repos):
+    `'CODE' TRY UNWRAP ≡ CODE` — same stack on success; on failure the
+    same message/location observable, and TRY UNWRAP-OR gives fallbacks.
+    Error-tolerant mapping is composition: `[xs] "'F' TRY" MAP`.
 
 ## Immune — do not port (Rust semantics already close these)
 

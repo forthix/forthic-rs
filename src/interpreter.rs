@@ -1032,6 +1032,12 @@ impl InterpreterContext for Interpreter {
         &self.timezone
     }
 
+    fn run(&mut self, code: &str) -> Result<(), ForthicError> {
+        // Explicit path: `self.run(code)` here would resolve to this trait
+        // method and recurse forever
+        Interpreter::run(self, code)
+    }
+
     fn stack_pop(&mut self) -> Result<ForthicValue, ForthicError> {
         self.stack.pop()
     }
