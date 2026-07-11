@@ -36,6 +36,10 @@ the spec for anything ported.
 
 ## Tier 2 — Semantic divergences from the post-scrub ts contract
 
+> **Status: all four fixed** (fix/tier2-record-semantics branch, tests in
+> tests/tier2_record_semantics_test.rs). FIRST and TAKE-LAST also landed
+> (were Tier 4 item 14) since the #33 contract covered them.
+
 6. **`Record` should be `IndexMap`, not `HashMap`** (`literals.rs:29`).
    ts #33 made record words rely on insertion order; HashMap has none, so
    rs sorts keys in `NTH`/`LAST` (`array.rs:112,139`) and emits
@@ -69,24 +73,46 @@ the spec for anything ported.
 
 ## Tier 4 — Missing features (port later; post-fix ts is the spec)
 
-12. **Word locations**: per-definition location tracking (ts #30 design:
+13. **Word locations**: per-definition location tracking (ts #30 design:
     `word_locations` vec parallel to `words` in DefinitionWord, thread
     `token.location` through `handle_word`) + the interpreter-error
     `with_location` work already listed in JSONRPC-PLAN follow-ups. Note the
     ts *race* (shared Word mutated at compile time) is uncompilable in rs
     (`&mut self` through `Arc` is refused) — only the feature is missing.
-13. **Missing stdlib words**: `MAP`, `SORT`, `FIRST`, `TAKE-LAST`,
+14. **Missing stdlib words**: `MAP`, `SORT`, `FIRST`, `TAKE-LAST`,
     `NUMBER?`, JQ path words, etc. Port to post-#31/#32/#33 contracts
     (e.g. MAP's fixed depth semantics), never pre-fix behavior. Never port
     `|REC@` (removed in #27 for injection).
-14. **Marked-string redirect + streaming** (ts #20 + #21 + #26 EOS
+15. **Marked-string redirect + streaming** (ts #20 + #21 + #26 EOS
     validation) — port as one coherent unit. First fix the dormant rs
     streaming tokenizer's ambiguity: it returns incomplete strings as
     normal String tokens (`tokenizer.rs:467-474, 509-515`), which will
     double-push if streaming is ever wired up as-is.
-15. **Recovery loop** (ts #26 fixed semantics: budget check before the
+16. **Recovery loop** (ts #26 fixed semantics: budget check before the
     recoverable region; never recover from TooManyAttempts).
     `ForthicError::TooManyAttempts` exists but is dead code today.
+
+## Tier 5 — Coordinated contract changes (both repos, ts leads)
+
+Unlike Tiers 1–4 (rs catching up to post-scrub ts), these change the
+cross-runtime contract itself, so they land in forthic-ts first and rs
+mirrors in the same pass — the plain-time extension (ts #36) is the model.
+
+17. **`>STR` of records should be useful, not "[object Object]".** Both
+    runtimes currently emit JS `Object.prototype.toString` output for
+    records (rs deliberately matches ts). Proposal: JSON rendering
+    (insertion-ordered, same as `>JSON`). Decide at the same time whether
+    array `>STR` stays JS comma-join (`"1,2,3"`) or also becomes JSON
+    (`"[1,2,3]"`) — the latter is more consistent but changes more existing
+    programs. Update both repos' tests together.
+18. **Candidates worth a decision, not yet committed to:**
+    - DateTime `==` timezone-sensitivity: same instant in different
+      timezones is currently NOT equal (ISO-string comparison in ts,
+      matched in rs). Alternative: instant equality.
+    - Integral floats collapse on the wire (`Float(5.0)` → `int_value` →
+      `Int(5)`): inherent to JS's single number type; a `float_value`-
+      always-for-floats rule on the ts side would fix rs↔rs and
+      python↔rs fidelity through a ts hop.
 
 ## Immune — do not port (Rust semantics already close these)
 

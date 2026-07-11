@@ -315,6 +315,7 @@ fn forthic_error_type(e: &ForthicError) -> &'static str {
         ForthicError::Module { .. } => "Module",
         ForthicError::TooManyAttempts { .. } => "TooManyAttempts",
         ForthicError::IntentionalStop { .. } => "IntentionalStop",
+        ForthicError::InvalidOperation { .. } => "InvalidOperation",
     }
 }
 

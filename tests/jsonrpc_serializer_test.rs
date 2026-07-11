@@ -10,8 +10,8 @@ use chrono_tz::Tz;
 use forthic::jsonrpc::{deserialize_value, serialize_value, SerializerError};
 use forthic::literals::ForthicValue;
 use forthic::word_options::WordOptions;
+use indexmap::IndexMap;
 use serde_json::{json, Value};
-use std::collections::HashMap;
 
 const GOLDEN_FIXTURES: &str = r#"{
   "null_v": { "null_value": {} },
@@ -115,9 +115,9 @@ fn test_nested_array_matches_ts_wire_format() {
 
 #[test]
 fn test_nested_record_matches_ts_wire_format() {
-    let mut inner = HashMap::new();
+    let mut inner = IndexMap::new();
     inner.insert("nested".to_string(), ForthicValue::Float(2.5));
-    let mut outer = HashMap::new();
+    let mut outer = IndexMap::new();
     outer.insert("alpha".to_string(), ForthicValue::Int(1));
     outer.insert("needs quoting!".to_string(), ForthicValue::Record(inner));
     assert_bidirectional("record_v", ForthicValue::Record(outer));
@@ -177,12 +177,12 @@ fn test_ts_collapses_integral_floats_to_int() {
 
 #[test]
 fn test_round_trip_deeply_nested() {
-    let mut rec = HashMap::new();
+    let mut rec = IndexMap::new();
     rec.insert(
         "items".to_string(),
         ForthicValue::Array(vec![
             ForthicValue::Record({
-                let mut m = HashMap::new();
+                let mut m = IndexMap::new();
                 m.insert(
                     "date".to_string(),
                     ForthicValue::Date(NaiveDate::from_ymd_opt(1999, 12, 31).unwrap()),
@@ -204,7 +204,7 @@ fn test_round_trip_deeply_nested() {
 fn test_round_trip_empty_containers() {
     for value in [
         ForthicValue::Array(vec![]),
-        ForthicValue::Record(HashMap::new()),
+        ForthicValue::Record(IndexMap::new()),
     ] {
         let wire = serialize_value(&value).unwrap();
         assert_eq!(deserialize_value(&wire).unwrap(), value);
@@ -311,7 +311,7 @@ fn test_unsupported_types_fail_to_serialize() {
 
 #[test]
 fn test_unsupported_type_reports_nested_path() {
-    let mut rec = HashMap::new();
+    let mut rec = IndexMap::new();
     rec.insert(
         "opts".to_string(),
         ForthicValue::Array(vec![ForthicValue::WordOptions(WordOptions::new())]),

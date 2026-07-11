@@ -68,18 +68,42 @@ impl StringModule {
 
     fn word_to_str(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
         let val = context.stack_pop()?;
+        context.stack_push(ForthicValue::String(Self::stringify(&val)));
+        Ok(())
+    }
 
-        let result = match val {
-            ForthicValue::String(s) => s,
+    /// ts >STR is `null -> ""`, otherwise JS toString(); mirror those
+    /// semantics so Forthic programs stringify identically across runtimes:
+    /// - arrays comma-join their recursively stringified elements, with
+    ///   null elements as empty strings (JS Array.prototype.toString)
+    /// - records are "[object Object]" (JS Object.prototype.toString)
+    /// - temporal values use their ISO forms (Temporal toString)
+    fn stringify(val: &ForthicValue) -> String {
+        match val {
+            ForthicValue::Null => String::new(),
+            ForthicValue::String(s) => s.clone(),
+            // Rust and JS agree here: 3.0 prints as "3", 3.25 as "3.25"
             ForthicValue::Int(i) => i.to_string(),
             ForthicValue::Float(f) => f.to_string(),
             ForthicValue::Bool(b) => b.to_string(),
-            ForthicValue::Null => "null".to_string(),
-            _ => format!("{:?}", val),
-        };
-
-        context.stack_push(ForthicValue::String(result));
-        Ok(())
+            ForthicValue::Array(arr) => arr
+                .iter()
+                .map(Self::stringify)
+                .collect::<Vec<_>>()
+                .join(","),
+            ForthicValue::Record(_) => "[object Object]".to_string(),
+            ForthicValue::Date(d) => d.format("%Y-%m-%d").to_string(),
+            ForthicValue::Time(t) => t.format("%H:%M:%S%.f").to_string(),
+            ForthicValue::DateTime(dt) => {
+                let tz_name = dt.timezone().name();
+                format!(
+                    "{}[{}]",
+                    dt.to_rfc3339_opts(chrono::SecondsFormat::AutoSi, false),
+                    tz_name
+                )
+            }
+            other => format!("{other:?}"),
+        }
     }
 
     fn word_url_encode(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {

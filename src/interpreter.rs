@@ -489,6 +489,9 @@ impl Interpreter {
     pub fn reset(&mut self) {
         self.stack.clear();
         self.module_stack = vec![self.app_module.clone()];
+        // Defense-in-depth: run() balances this stack on both paths, but a
+        // reset must restore ALL parse state (ts #26 parity)
+        self.tokenizer_stack.clear();
         self.is_compiling = false;
         self.is_memo_definition = false;
         self.cur_definition = None;
