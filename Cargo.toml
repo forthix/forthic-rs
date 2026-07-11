@@ -41,6 +41,13 @@ proptest = "1.0"
 [features]
 default = []
 cli = ["clap", "rustyline", "colored"]
+# JSON-RPC multi-runtime support (see plans/JSONRPC-PLAN.md). Phase 3 adds
+# the server deps here (axum, tokio, subtle).
+jsonrpc = []
+
+[[test]]
+name = "jsonrpc_serializer_test"
+required-features = ["jsonrpc"]
 
 # Binary will be added in Phase 7
 # [[bin]]

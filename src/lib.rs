@@ -5,6 +5,8 @@
 
 pub mod errors;
 pub mod interpreter;
+#[cfg(feature = "jsonrpc")]
+pub mod jsonrpc;
 pub mod literals;
 pub mod module;
 pub mod modules;
