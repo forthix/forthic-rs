@@ -167,3 +167,24 @@ goal (rs as a callable runtime), so skip until there's a use case.
 - gRPC transport (ts unhooked its gRPC surface in #22; JSON-RPC is the path forward).
 - Batch JSON-RPC support (explicitly rejected, matching ts).
 - Runtime-specific modules (fs etc.) — separate effort; the registry is ready for them.
+
+
+## Client (2026-07-12)
+
+`JsonRpcClient` (src/jsonrpc/client.rs) completes the transport: rs can now
+CALL other runtimes, not just serve them. Blocking by design (the interpreter
+is synchronous, so a word calling a remote runtime blocks its thread) and
+dependency-free — a hand-rolled HTTP/1.1 POST over `std::net::TcpStream`
+(Content-Length and chunked responses both handled). Bearer-token auth
+matches the server's `--token`.
+
+Cross-runtime smoke now covers all four directions:
+- `make smoke-ts` — ts client -> rs server (existing)
+- `make smoke-ts-server` — rs client -> ts server (new)
+- `make smoke-py-server` — rs client -> py server (new)
+- forthic-py carries the mirrored pair (ts client -> py server, py client -> rs server)
+
+The rs-client smokes immediately caught a real forthic-ts bug: its standalone
+JSON-RPC server never installed the Temporal polyfill (it was wired only into
+the jest setup), so every date/time value on the wire failed with
+"ReferenceError: Temporal is not defined". Fixed in forthic-ts.

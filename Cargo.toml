@@ -72,6 +72,14 @@ required-features = ["jsonrpc"]
 name = "jsonrpc_dispatch_test"
 required-features = ["jsonrpc"]
 
+[[example]]
+name = "smoke_client"
+required-features = ["jsonrpc"]
+
+[[test]]
+name = "jsonrpc_client_test"
+required-features = ["jsonrpc"]
+
 [[test]]
 name = "jsonrpc_server_test"
 required-features = ["jsonrpc"]
