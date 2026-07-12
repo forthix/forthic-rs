@@ -184,45 +184,39 @@ impl BooleanModule {
         module.add_exportable_word(word);
     }
 
+    /// OR: ( a b -- bool ) — strictly two operands; an ARRAY operand is an
+    /// error pointing at ANY? (ts contract — the old rs array-collapse form
+    /// silently changed arity). Non-boolean operands coerce by truthiness
+    /// and the result is always a Bool (ts returns a raw operand there — a
+    /// JS || accident; sanctioned divergence).
     fn word_or(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
         let b = context.stack_pop()?;
-
-        // Case 1: Array on top of stack
-        if let ForthicValue::Array(arr) = b {
-            for val in arr {
-                if Self::is_truthy(&val) {
-                    context.stack_push(ForthicValue::Bool(true));
-                    return Ok(());
-                }
-            }
-            context.stack_push(ForthicValue::Bool(false));
-            return Ok(());
-        }
-
-        // Case 2: Two values
         let a = context.stack_pop()?;
+        if matches!(a, ForthicValue::Array(_)) || matches!(b, ForthicValue::Array(_)) {
+            return Err(ForthicError::InvalidOperation {
+                forthic: String::new(),
+                message: "OR takes two values. For an array of booleans, use ANY?.".to_string(),
+                location: None,
+                cause: None,
+            });
+        }
         let result = Self::is_truthy(&a) || Self::is_truthy(&b);
         context.stack_push(ForthicValue::Bool(result));
         Ok(())
     }
 
+    /// AND: ( a b -- bool ) — see OR; arrays error toward ALL?
     fn word_and(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
         let b = context.stack_pop()?;
-
-        // Case 1: Array on top of stack
-        if let ForthicValue::Array(arr) = b {
-            for val in arr {
-                if !Self::is_truthy(&val) {
-                    context.stack_push(ForthicValue::Bool(false));
-                    return Ok(());
-                }
-            }
-            context.stack_push(ForthicValue::Bool(true));
-            return Ok(());
-        }
-
-        // Case 2: Two values
         let a = context.stack_pop()?;
+        if matches!(a, ForthicValue::Array(_)) || matches!(b, ForthicValue::Array(_)) {
+            return Err(ForthicError::InvalidOperation {
+                forthic: String::new(),
+                message: "AND takes two values. For an array of booleans, use ALL?.".to_string(),
+                location: None,
+                cause: None,
+            });
+        }
         let result = Self::is_truthy(&a) && Self::is_truthy(&b);
         context.stack_push(ForthicValue::Bool(result));
         Ok(())

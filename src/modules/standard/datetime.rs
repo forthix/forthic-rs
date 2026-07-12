@@ -122,7 +122,7 @@ impl DateTimeModule {
         Ok(())
     }
 
-    /// >DATE: ( value -- date ) — ts #35 contract:
+    /// `>DATE`: ( value -- date ) — ts #35 contract:
     /// - Date passes through; DateTime takes its OWN timezone's calendar
     ///   date
     /// - ISO date strings, and ISO datetime strings with NO zone or with
@@ -179,23 +179,29 @@ impl DateTimeModule {
         None
     }
 
+    /// `>DATETIME`: ( value -- datetime ) — results carry the INTERPRETER
+    /// timezone (ts contract, pinned by tests that only pass in LA):
+    /// DateTime passes through keeping its OWN zone; Int/Float are epoch
+    /// SECONDS; a Date is midnight in the interpreter tz; naive datetime
+    /// and date-only strings are wall clocks in the interpreter tz.
+    /// Sanctioned divergence for zoned strings: rs reads trailing-Z and
+    /// explicit-offset strings as the INSTANTS they denote, resolved into
+    /// the interpreter tz — ts nulls Z-strings and silently reinterprets
+    /// offset wall-clocks (Temporal accidents inconsistent with its own
+    /// `>DATE` #35 rule).
     fn word_to_datetime(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
         let val = context.stack_pop()?;
+        let tz = Self::context_tz(context);
 
         let result = match val {
             ForthicValue::DateTime(dt) => ForthicValue::DateTime(dt),
-            ForthicValue::Int(timestamp) => {
-                // Treat as Unix timestamp (seconds)
-                if let Some(dt) = DateTime::from_timestamp(timestamp, 0) {
-                    let utc_dt = dt.with_timezone(&chrono_tz::UTC);
-                    ForthicValue::DateTime(utc_dt)
-                } else {
-                    ForthicValue::Null
-                }
+            ForthicValue::Int(secs) => Self::epoch_to_datetime(secs as f64, tz),
+            ForthicValue::Float(secs) => Self::epoch_to_datetime(secs, tz),
+            ForthicValue::Date(d) => {
+                Self::wall_clock_in_tz(d.and_hms_opt(0, 0, 0).expect("midnight"), tz)
             }
             ForthicValue::String(s) => {
-                // Try to parse datetime string
-                Self::parse_datetime_string(&s).unwrap_or(ForthicValue::Null)
+                Self::parse_datetime_string(s.trim(), tz).unwrap_or(ForthicValue::Null)
             }
             _ => ForthicValue::Null,
         };
@@ -204,21 +210,47 @@ impl DateTimeModule {
         Ok(())
     }
 
+    /// Epoch seconds (fractional ok) -> DateTime in the given timezone
+    fn epoch_to_datetime(secs: f64, tz: chrono_tz::Tz) -> ForthicValue {
+        if !secs.is_finite() {
+            return ForthicValue::Null;
+        }
+        DateTime::from_timestamp_millis((secs * 1000.0).round() as i64)
+            .map(|dt| ForthicValue::DateTime(dt.with_timezone(&tz)))
+            .unwrap_or(ForthicValue::Null)
+    }
+
+    /// A naive wall clock resolved in a timezone. DST overlap picks the
+    /// earlier offset; a DST gap shifts forward an hour (approximating
+    /// Temporal's 'compatible' disambiguation).
+    fn wall_clock_in_tz(naive: chrono::NaiveDateTime, tz: chrono_tz::Tz) -> ForthicValue {
+        match tz.from_local_datetime(&naive) {
+            chrono::LocalResult::Single(dt) => ForthicValue::DateTime(dt),
+            chrono::LocalResult::Ambiguous(first, _) => ForthicValue::DateTime(first),
+            chrono::LocalResult::None => tz
+                .from_local_datetime(&(naive + Duration::hours(1)))
+                .earliest()
+                .map(ForthicValue::DateTime)
+                .unwrap_or(ForthicValue::Null),
+        }
+    }
+
+    /// AT: ( date time -- datetime ) — that wall clock in the INTERPRETER
+    /// timezone (ts contract; was UTC-hardcoded). A DateTime date operand
+    /// contributes its own-timezone calendar date (ts duck-types on
+    /// year/month/day).
     fn word_at(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
         let time = context.stack_pop()?;
         let date = context.stack_pop()?;
+        let tz = Self::context_tz(context);
 
-        let result = match (date, time) {
-            (ForthicValue::Date(d), ForthicValue::Time(t)) => {
-                // Combine date and time into datetime
-                let dt = d.and_time(t);
-                let zoned = Utc.from_local_datetime(&dt).single();
-                if let Some(zdt) = zoned {
-                    ForthicValue::DateTime(zdt.with_timezone(&chrono_tz::UTC))
-                } else {
-                    ForthicValue::Null
-                }
-            }
+        let date_part = match &date {
+            ForthicValue::Date(d) => Some(*d),
+            ForthicValue::DateTime(dt) => Some(dt.date_naive()),
+            _ => None,
+        };
+        let result = match (date_part, time) {
+            (Some(d), ForthicValue::Time(t)) => Self::wall_clock_in_tz(d.and_time(t), tz),
             _ => ForthicValue::Null,
         };
 
@@ -323,20 +355,18 @@ impl DateTimeModule {
         Ok(())
     }
 
+    /// TIMESTAMP>DATETIME: ( epoch_seconds -- datetime ) — in the
+    /// INTERPRETER timezone (ts contract; was UTC-hardcoded). Fractional
+    /// seconds accepted; non-numeric is NULL.
     fn word_timestamp_to_datetime(
         context: &mut dyn InterpreterContext,
     ) -> Result<(), ForthicError> {
         let val = context.stack_pop()?;
+        let tz = Self::context_tz(context);
 
         let result = match val {
-            ForthicValue::Int(timestamp) => {
-                if let Some(dt) = DateTime::from_timestamp(timestamp, 0) {
-                    let utc_dt = dt.with_timezone(&chrono_tz::UTC);
-                    ForthicValue::DateTime(utc_dt)
-                } else {
-                    ForthicValue::Null
-                }
-            }
+            ForthicValue::Int(secs) => Self::epoch_to_datetime(secs as f64, tz),
+            ForthicValue::Float(secs) => Self::epoch_to_datetime(secs, tz),
             _ => ForthicValue::Null,
         };
 
@@ -542,22 +572,23 @@ impl DateTimeModule {
             .map(ForthicValue::Time)
     }
 
-    /// Parse datetime string
-    fn parse_datetime_string(s: &str) -> Option<ForthicValue> {
-        let s = s.trim();
-
-        // Try parsing with chrono
+    /// Parse a datetime string against the interpreter timezone: zoned
+    /// forms (Z / explicit offset) are instants resolved INTO tz
+    /// (sanctioned divergence — see >DATETIME); naive datetime and
+    /// date-only forms are wall clocks IN tz.
+    fn parse_datetime_string(s: &str, tz: chrono_tz::Tz) -> Option<ForthicValue> {
         if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
-            return Some(ForthicValue::DateTime(dt.with_timezone(&chrono_tz::UTC)));
+            return Some(ForthicValue::DateTime(dt.with_timezone(&tz)));
         }
-
-        // Try parsing as naive datetime and assume UTC
-        if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S") {
-            if let Some(dt) = Utc.from_local_datetime(&naive).single() {
-                return Some(ForthicValue::DateTime(dt.with_timezone(&chrono_tz::UTC)));
+        for fmt in ["%Y-%m-%dT%H:%M:%S%.f", "%Y-%m-%dT%H:%M"] {
+            if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(s, fmt) {
+                return Some(Self::wall_clock_in_tz(naive, tz));
             }
         }
-
+        // Date-only: midnight in tz (ts PlainDateTime.from accepts these)
+        if let Ok(d) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+            return Some(Self::wall_clock_in_tz(d.and_hms_opt(0, 0, 0)?, tz));
+        }
         None
     }
 }

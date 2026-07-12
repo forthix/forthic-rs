@@ -22,6 +22,14 @@ impl InterpreterContext for MockContext {
         self.stack.push(value);
     }
 
+    // @ is a read-only lookup via this hook (the trait default returns
+    // None, which would make every fetch an UnknownVariable error)
+    fn find_variable_value(&self, name: &str) -> Option<ForthicValue> {
+        self.module
+            .get_variable(name)
+            .map(|v| v.get_value().clone())
+    }
+
     fn stack_pop(&mut self) -> Result<ForthicValue, forthic::ForthicError> {
         self.stack
             .pop()
