@@ -35,17 +35,23 @@ use std::sync::{Arc, Mutex};
 /// per entry. Each expansion is its own expression, so no fn-pointer cast is
 /// needed to unify handler types (the annoyance of tuple-array loops).
 ///
+/// Every entry carries its documentation (backlog item 22) — there is
+/// deliberately no undocumented form, so a new word can't compile without
+/// a stack effect and description. Entries are semicolon-separated because
+/// the doc fields use commas:
+///
 /// ```ignore
 /// register_words!(module, {
-///     "FILTER"  => Self::word_filter,
-///     "FOREACH" => Self::word_foreach,
+///     "FILTER" => Self::word_filter,
+///         "( items:any[] forthic:string -- filtered:any[] )",
+///         "Keep elements where forthic yields a truthy value";
 /// });
 /// ```
 macro_rules! register_words {
-    ($module:expr, { $( $name:literal => $handler:expr ),+ $(,)? }) => {
+    ($module:expr, { $( $name:literal => $handler:expr, $effect:literal, $desc:literal );+ $(;)? }) => {
         $(
             $module.add_exportable_word(std::sync::Arc::new(
-                $crate::module::ModuleWord::new($name.to_string(), $handler),
+                $crate::module::ModuleWord::with_doc($name.to_string(), $handler, $effect, $desc),
             ));
         )+
     };
@@ -206,9 +212,24 @@ impl Variable {
 ///
 /// A word is the fundamental unit of execution. When interpreted,
 /// it performs an action (typically manipulating the stack or control flow).
+/// Documentation metadata carried by a word (backlog item 22 Tier 2):
+/// the stack-effect comment and a one-line description, mirroring ts's
+/// @ForthicWord(stackEffect, description). Consumed by
+/// Module::word_docs / the docs generator (and eventually a REPL).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WordDoc {
+    pub stack_effect: &'static str,
+    pub description: &'static str,
+}
+
 pub trait Word: Send + Sync {
     /// Get the word name
     fn name(&self) -> &str;
+
+    /// Documentation metadata, when the word carries any
+    fn doc(&self) -> Option<&WordDoc> {
+        None
+    }
 
     /// Get the word's source string representation
     fn string(&self) -> &str {
@@ -519,6 +540,7 @@ pub struct ModuleWord {
     handler: WordExecutor,
     error_handlers: Mutex<Vec<Arc<dyn WordErrorHandler>>>,
     location: Option<CodeLocation>,
+    doc: Option<WordDoc>,
 }
 
 impl ModuleWord {
@@ -529,7 +551,23 @@ impl ModuleWord {
             handler,
             error_handlers: Mutex::new(Vec::new()),
             location: None,
+            doc: None,
         }
+    }
+
+    /// Create a documented ModuleWord (the register_words! documented form)
+    pub fn with_doc(
+        name: String,
+        handler: WordExecutor,
+        stack_effect: &'static str,
+        description: &'static str,
+    ) -> Self {
+        let mut word = Self::new(name, handler);
+        word.doc = Some(WordDoc {
+            stack_effect,
+            description,
+        });
+        word
     }
 
     /// Add an error handler to this word
@@ -575,6 +613,10 @@ impl ModuleWord {
 }
 
 impl Word for ModuleWord {
+    fn doc(&self) -> Option<&WordDoc> {
+        self.doc.as_ref()
+    }
+
     fn name(&self) -> &str {
         &self.name
     }
@@ -707,6 +749,15 @@ impl Module {
     }
 
     /// Get all exportable words
+    /// (name, doc) for every documented exportable word, registration order
+    pub fn word_docs(&self) -> Vec<(&str, &WordDoc)> {
+        self.words
+            .iter()
+            .filter(|w| self.exportable.contains(&w.name().to_string()))
+            .filter_map(|w| w.doc().map(|d| (w.name(), d)))
+            .collect()
+    }
+
     pub fn exportable_words(&self) -> Vec<Arc<dyn Word>> {
         self.words
             .iter()

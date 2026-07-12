@@ -15,10 +15,9 @@
 
 use crate::errors::ForthicError;
 use crate::literals::ForthicValue;
-use crate::module::{register_words, InterpreterContext, Module, ModuleWord};
+use crate::module::{register_words, InterpreterContext, Module};
 use crate::word_options::WordOptions;
 use indexmap::IndexMap;
-use std::sync::Arc;
 
 /// Build an `{"ok": payload}` outcome record (TRY / MAP outcomes)
 pub(crate) fn ok_outcome(payload: ForthicValue) -> ForthicValue {
@@ -85,8 +84,14 @@ impl CoreModule {
     fn register_output_words(module: &mut Module) {
         register_words!(module, {
             "INTERPOLATE" => Self::word_interpolate,
+                "( string:string [options:WordOptions] -- result:string )",
+                "Fill ${name} holes from variables (${.name} also works; read-only — a miss renders as null_text and creates nothing). Holes are variable names, never expressions. Escape a literal with \\${. Null template stays null.";
             "PRINT" => Self::word_print,
+                "( value:any [options:WordOptions] -- )",
+                "Print value to stdout. Strings interpolate ${name} holes first; other values format with the same options. Escape a literal with \\${.";
             "USE-MODULES" => Self::word_use_modules,
+                "( names:string[] [options:WordOptions] -- )",
+                "Import registered modules by name; entries are 'name' or ['name' 'prefix'] pairs. Option prefixed (bool) prefixes plain names with themselves.";
         });
     }
 
@@ -319,19 +324,23 @@ impl CoreModule {
     // ===== Control Flow & Execution =====
 
     fn register_flow_words(module: &mut Module) {
-        for (name, handler) in [
-            (
-                "RUN",
-                Self::word_run as fn(&mut dyn InterpreterContext) -> Result<(), ForthicError>,
-            ),
-            ("IF", Self::word_if),
-            ("IF-RUN", Self::word_if_run),
-            ("WHEN", Self::word_when),
-            ("DEFAULT-RUN", Self::word_default_run),
-        ] {
-            let word = Arc::new(ModuleWord::new(name.to_string(), handler));
-            module.add_exportable_word(word);
-        }
+        register_words!(module, {
+            "RUN" => Self::word_run,
+                "( forthic:string -- ? )",
+                "Run a Forthic string in the current context. Whatever the forthic produces is left on the stack.";
+            "IF" => Self::word_if,
+                "( bool:boolean then_value:any else_value:any -- chosen:any )",
+                "Pure value selection: push then_value if bool is truthy, else push else_value. For lazy code execution use IF-RUN; for one-sided side effects use WHEN.";
+            "IF-RUN" => Self::word_if_run,
+                "( bool:boolean then_forthic:string else_forthic:string -- ? )",
+                "Conditional code execution: if bool is truthy run then_forthic, otherwise run else_forthic. Branches are Forthic strings.";
+            "WHEN" => Self::word_when,
+                "( bool:boolean forthic:string -- ? )",
+                "If bool is truthy run forthic, otherwise do nothing. The forthic argument is always treated as code (executed in current context).";
+            "DEFAULT-RUN" => Self::word_default_run,
+                "( value:any forthic:string -- result:any )",
+                "Lazy default: returns value if non-empty, otherwise runs forthic and uses its result. The forthic is only evaluated when needed.";
+        });
     }
 
     fn pop_forthic(
@@ -433,19 +442,23 @@ impl CoreModule {
     // ===== Predicates =====
 
     fn register_predicate_words(module: &mut Module) {
-        for (name, handler) in [
-            (
-                "NULL?",
-                Self::word_null_q as fn(&mut dyn InterpreterContext) -> Result<(), ForthicError>,
-            ),
-            ("EMPTY?", Self::word_empty_q),
-            ("STRING?", Self::word_string_q),
-            ("NUMBER?", Self::word_number_q),
-            ("RECORD?", Self::word_record_q),
-        ] {
-            let word = Arc::new(ModuleWord::new(name.to_string(), handler));
-            module.add_exportable_word(word);
-        }
+        register_words!(module, {
+            "NULL?" => Self::word_null_q,
+                "( value:any -- boolean:boolean )",
+                "Returns true if value is null";
+            "EMPTY?" => Self::word_empty_q,
+                "( value:any -- boolean:boolean )",
+                "Returns true if value is null, an empty string, or a container (array/record) with no entries";
+            "STRING?" => Self::word_string_q,
+                "( value:any -- boolean:boolean )",
+                "Returns true if value is a string";
+            "NUMBER?" => Self::word_number_q,
+                "( value:any -- boolean:boolean )",
+                "Returns true if value is a number (Infinity is a number; NaN is not)";
+            "RECORD?" => Self::word_record_q,
+                "( value:any -- boolean:boolean )",
+                "Returns true if value is a record";
+        });
     }
 
     fn word_null_q(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
@@ -497,7 +510,11 @@ impl CoreModule {
     fn register_debug_words(module: &mut Module) {
         register_words!(module, {
             "PEEK!" => Self::word_peek_bang,
+                "( -- )",
+                "Prints top of stack and stops execution";
             "STACK!" => Self::word_stack_bang,
+                "( -- )",
+                "Prints entire stack (reversed) and stops execution";
         });
     }
 
@@ -537,10 +554,20 @@ impl CoreModule {
     fn register_error_words(module: &mut Module) {
         register_words!(module, {
             "TRY" => Self::word_try,
+                "( forthic:string -- outcome:record )",
+                "Run forthic, capturing the outcome as data: {'ok': value} on success, {'error': {message, error_type}} on failure (the stack is restored on failure)";
             "OK?" => Self::word_ok_q,
+                "( outcome:record -- boolean:boolean )",
+                "True if outcome is an ok record (structural: has an 'ok' key)";
             "ERROR?" => Self::word_error_q,
+                "( outcome:record -- boolean:boolean )",
+                "True if outcome is an error record (structural: has an 'error' key)";
             "UNWRAP" => Self::word_unwrap,
+                "( outcome:record -- value:any )",
+                "Extract the ok value from a TRY outcome; re-raises for an error outcome (preserving message and error_type). 'CODE' TRY UNWRAP is equivalent to CODE.";
             "UNWRAP-OR" => Self::word_unwrap_or,
+                "( outcome:record default:any -- value:any )",
+                "Extract the ok value from a TRY outcome, or default if it is an error outcome";
         });
     }
 
@@ -694,17 +721,18 @@ impl CoreModule {
     // ===== Stack Operations =====
 
     fn register_stack_words(module: &mut Module) {
-        // DROP (pop top of stack — ts-canonical name; the classic POP is dropped)
-        let word = Arc::new(ModuleWord::new("DROP".to_string(), Self::word_drop));
-        module.add_exportable_word(word);
-
-        // DUP
-        let word = Arc::new(ModuleWord::new("DUP".to_string(), Self::word_dup));
-        module.add_exportable_word(word);
-
-        // SWAP
-        let word = Arc::new(ModuleWord::new("SWAP".to_string(), Self::word_swap));
-        module.add_exportable_word(word);
+        // DROP pops the top of stack — ts-canonical name; the classic POP is dropped
+        register_words!(module, {
+            "DROP" => Self::word_drop,
+                "( a:any -- )",
+                "Removes top item from stack";
+            "DUP" => Self::word_dup,
+                "( a:any -- a:any a:any )",
+                "Duplicates top stack item";
+            "SWAP" => Self::word_swap,
+                "( a:any b:any -- b:any a:any )",
+                "Swaps top two stack items";
+        });
     }
 
     fn word_drop(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
@@ -730,24 +758,20 @@ impl CoreModule {
     // ===== Variable Operations =====
 
     fn register_variable_words(module: &mut Module) {
-        // VARIABLES
-        let word = Arc::new(ModuleWord::new(
-            "VARIABLES".to_string(),
-            Self::word_variables,
-        ));
-        module.add_exportable_word(word);
-
-        // !
-        let word = Arc::new(ModuleWord::new("!".to_string(), Self::word_store));
-        module.add_exportable_word(word);
-
-        // @
-        let word = Arc::new(ModuleWord::new("@".to_string(), Self::word_fetch));
-        module.add_exportable_word(word);
-
-        // !@
-        let word = Arc::new(ModuleWord::new("!@".to_string(), Self::word_store_fetch));
-        module.add_exportable_word(word);
+        register_words!(module, {
+            "VARIABLES" => Self::word_variables,
+                "( varnames:string[] -- )",
+                "Creates variables in current module";
+            "!" => Self::word_store,
+                "( value:any varname:string -- )",
+                "Sets variable value (auto-creates the variable if undeclared)";
+            "@" => Self::word_fetch,
+                "( varname:string -- value:any )",
+                "Gets variable value (read-only; an undeclared name is an UnknownVariable error)";
+            "!@" => Self::word_store_fetch,
+                "( value:any varname:string -- value:any )",
+                "Sets variable and returns value";
+        });
     }
 
     fn word_variables(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
@@ -883,21 +907,20 @@ impl CoreModule {
     // ===== Control Flow Operations =====
 
     fn register_control_words(module: &mut Module) {
-        // NOP
-        let word = Arc::new(ModuleWord::new("NOP".to_string(), Self::word_nop));
-        module.add_exportable_word(word);
-
-        // NULL
-        let word = Arc::new(ModuleWord::new("NULL".to_string(), Self::word_null));
-        module.add_exportable_word(word);
-
-        // ARRAY?
-        let word = Arc::new(ModuleWord::new("ARRAY?".to_string(), Self::word_is_array));
-        module.add_exportable_word(word);
-
-        // DEFAULT
-        let word = Arc::new(ModuleWord::new("DEFAULT".to_string(), Self::word_default));
-        module.add_exportable_word(word);
+        register_words!(module, {
+            "NOP" => Self::word_nop,
+                "( -- )",
+                "Does nothing (no operation)";
+            "NULL" => Self::word_null,
+                "( -- null:null )",
+                "Pushes null onto stack";
+            "ARRAY?" => Self::word_is_array,
+                "( value:any -- boolean:boolean )",
+                "Returns true if value is an array";
+            "DEFAULT" => Self::word_default,
+                "( value:any default_value:any -- result:any )",
+                "Returns value, or default if value is null or empty string";
+        });
     }
 
     fn word_nop(_context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
@@ -933,9 +956,11 @@ impl CoreModule {
     // ===== Options Operations =====
 
     fn register_options_words(module: &mut Module) {
-        // ~>
-        let word = Arc::new(ModuleWord::new("~>".to_string(), Self::word_to_options));
-        module.add_exportable_word(word);
+        register_words!(module, {
+            "~>" => Self::word_to_options,
+                "( array:any[] -- options:WordOptions )",
+                "Convert options array to WordOptions. Format: [.key1 val1 .key2 val2]";
+        });
     }
 
     fn word_to_options(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {

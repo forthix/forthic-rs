@@ -10,9 +10,8 @@
 use super::jq_path::{jq_del, jq_get, jq_set, parse_jq_path};
 use crate::errors::ForthicError;
 use crate::literals::ForthicValue;
-use crate::module::{register_words, InterpreterContext, Module, ModuleWord};
+use crate::module::{register_words, InterpreterContext, Module};
 use indexmap::IndexMap;
-use std::sync::Arc;
 
 /// RecordModule provides record/dictionary operations
 pub struct RecordModule {
@@ -50,8 +49,14 @@ impl RecordModule {
     fn register_jq_words(module: &mut Module) {
         register_words!(module, {
             "JQ@" => Self::word_jq_at,
+                "( container:any path:any -- value:any )",
+                "Get value at jq-style path (e.g., .users[].name). Returns null on miss; [] iterates and flattens. Path arrays accepted for dynamic keys.";
             "JQ!" => Self::word_jq_set,
+                "( container:any value:any path:any -- container:any )",
+                "Set value at jq-style path. Auto-creates missing intermediates (record for field, array for index). [] iteration not supported.";
             "JQ-DEL" => Self::word_jq_del,
+                "( container:any path:any -- container:any )",
+                "Delete value at jq-style path. No-op if path doesn't exist. [] iteration not supported.";
         });
     }
 
@@ -59,12 +64,26 @@ impl RecordModule {
     fn register_shaping_words(module: &mut Module) {
         register_words!(module, {
             "MERGE" => Self::word_merge,
+                "( rec1:record rec2:record -- merged:record )",
+                "Shallow merge two records. Keys present in rec2 override rec1.";
             "PICK" => Self::word_pick,
+                "( rec:record keys:any[] -- rec:record )",
+                "Return a new record containing only the listed keys (missing keys are skipped)";
             "OMIT" => Self::word_omit,
+                "( rec:record keys:any[] -- rec:record )",
+                "Return a new record without the listed keys";
             "HAS-KEY?" => Self::word_has_key_q,
+                "( rec:record key:any -- bool:boolean )",
+                "Returns true if rec has the given key (presence, even when the value is null)";
             "DELETE" => Self::word_delete,
+                "( container:any key:any -- container:any )",
+                "Delete key from record or index from array (copy-on-write; missing keys are no-ops)";
             "REC>ENTRIES" => Self::word_rec_to_entries,
+                "( rec:record -- pairs:any[] )",
+                "Convert a record to an array of [key, value] pairs in insertion order. Inverse of ENTRIES>REC.";
             "ENTRIES>REC" => Self::word_entries_to_rec,
+                "( pairs:any[] -- rec:record )",
+                "Build a record from an array of [key, value] pairs (strict pair validation). Inverse of REC>ENTRIES.";
         });
     }
 
@@ -306,17 +325,17 @@ impl RecordModule {
     }
 
     fn register_core_words(module: &mut Module) {
-        // REC
-        let word = Arc::new(ModuleWord::new("REC".to_string(), Self::word_rec));
-        module.add_exportable_word(word);
-
-        // REC@
-        let word = Arc::new(ModuleWord::new("REC@".to_string(), Self::word_rec_at));
-        module.add_exportable_word(word);
-
-        // <REC!
-        let word = Arc::new(ModuleWord::new("<REC!".to_string(), Self::word_set_rec));
-        module.add_exportable_word(word);
+        register_words!(module, {
+            "REC" => Self::word_rec,
+                "( key_vals:any[] -- rec:record )",
+                "Create record from [[key, val], ...] pairs (invalid pairs are skipped)";
+            "REC@" => Self::word_rec_at,
+                "( rec:record field:any -- value:any )",
+                "Get value from record by field or array of fields (null on miss)";
+            "<REC!" => Self::word_set_rec,
+                "( rec:record value:any field:any -- rec:record )",
+                "Set value in record at field, or at a nested path given an array of fields";
+        });
     }
 
     fn word_rec(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
@@ -451,16 +470,14 @@ impl RecordModule {
     // ===== Transform Operations =====
 
     fn register_transform_words(module: &mut Module) {
-        // RELABEL
-        let word = Arc::new(ModuleWord::new("RELABEL".to_string(), Self::word_relabel));
-        module.add_exportable_word(word);
-
-        // INVERT-KEYS
-        let word = Arc::new(ModuleWord::new(
-            "INVERT-KEYS".to_string(),
-            Self::word_invert_keys,
-        ));
-        module.add_exportable_word(word);
+        register_words!(module, {
+            "RELABEL" => Self::word_relabel,
+                "( rec:record old_keys:string[] new_keys:string[] -- rec:record )",
+                "Rename record keys: the value at old_keys[i] moves to new_keys[i]; unlisted keys are dropped";
+            "INVERT-KEYS" => Self::word_invert_keys,
+                "( rec:record -- rec:record )",
+                "Invert a two-level record: result[inner_key][outer_key] = value";
+        });
     }
 
     fn word_relabel(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
@@ -541,13 +558,14 @@ impl RecordModule {
     // ===== Access Operations =====
 
     fn register_access_words(module: &mut Module) {
-        // KEYS
-        let word = Arc::new(ModuleWord::new("KEYS".to_string(), Self::word_keys));
-        module.add_exportable_word(word);
-
-        // VALUES
-        let word = Arc::new(ModuleWord::new("VALUES".to_string(), Self::word_values));
-        module.add_exportable_word(word);
+        register_words!(module, {
+            "KEYS" => Self::word_keys,
+                "( container:any -- keys:any[] )",
+                "Get keys from record or indices from array";
+            "VALUES" => Self::word_values,
+                "( container:any -- values:any[] )",
+                "Get values from record or elements from array";
+        });
     }
 
     fn word_keys(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {

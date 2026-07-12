@@ -10,8 +10,7 @@
 
 use crate::errors::ForthicError;
 use crate::literals::ForthicValue;
-use crate::module::{InterpreterContext, Module, ModuleWord};
-use std::sync::Arc;
+use crate::module::{register_words, InterpreterContext, Module};
 
 /// BooleanModule provides comparison and logic operations
 pub struct BooleanModule {
@@ -45,35 +44,26 @@ impl BooleanModule {
     // ===== Comparison Operations =====
 
     fn register_comparison_words(module: &mut Module) {
-        // ==
-        let word = Arc::new(ModuleWord::new("==".to_string(), Self::word_equals));
-        module.add_exportable_word(word);
-
-        // !=
-        let word = Arc::new(ModuleWord::new("!=".to_string(), Self::word_not_equals));
-        module.add_exportable_word(word);
-
-        // <
-        let word = Arc::new(ModuleWord::new("<".to_string(), Self::word_less_than));
-        module.add_exportable_word(word);
-
-        // <=
-        let word = Arc::new(ModuleWord::new(
-            "<=".to_string(),
-            Self::word_less_than_or_equal,
-        ));
-        module.add_exportable_word(word);
-
-        // >
-        let word = Arc::new(ModuleWord::new(">".to_string(), Self::word_greater_than));
-        module.add_exportable_word(word);
-
-        // >=
-        let word = Arc::new(ModuleWord::new(
-            ">=".to_string(),
-            Self::word_greater_than_or_equal,
-        ));
-        module.add_exportable_word(word);
+        register_words!(module, {
+            "==" => Self::word_equals,
+                "( a:any b:any -- equal:boolean )",
+                "Test equality";
+            "!=" => Self::word_not_equals,
+                "( a:any b:any -- not_equal:boolean )",
+                "Test inequality";
+            "<" => Self::word_less_than,
+                "( a:any b:any -- less_than:boolean )",
+                "Less than";
+            "<=" => Self::word_less_than_or_equal,
+                "( a:any b:any -- less_equal:boolean )",
+                "Less than or equal";
+            ">" => Self::word_greater_than,
+                "( a:any b:any -- greater_than:boolean )",
+                "Greater than";
+            ">=" => Self::word_greater_than_or_equal,
+                "( a:any b:any -- greater_equal:boolean )",
+                "Greater than or equal";
+        });
     }
 
     fn word_equals(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
@@ -163,25 +153,23 @@ impl BooleanModule {
     // ===== Logic Operations =====
 
     fn register_logic_words(module: &mut Module) {
-        // OR
-        let word = Arc::new(ModuleWord::new("OR".to_string(), Self::word_or));
-        module.add_exportable_word(word);
-
-        // AND
-        let word = Arc::new(ModuleWord::new("AND".to_string(), Self::word_and));
-        module.add_exportable_word(word);
-
-        // NOT
-        let word = Arc::new(ModuleWord::new("NOT".to_string(), Self::word_not));
-        module.add_exportable_word(word);
-
-        // XOR
-        let word = Arc::new(ModuleWord::new("XOR".to_string(), Self::word_xor));
-        module.add_exportable_word(word);
-
-        // NAND
-        let word = Arc::new(ModuleWord::new("NAND".to_string(), Self::word_nand));
-        module.add_exportable_word(word);
+        register_words!(module, {
+            "OR" => Self::word_or,
+                "( a:boolean b:boolean -- result:boolean )",
+                "Logical OR of two values (truthiness-coerced); an array operand errors — use ANY?";
+            "AND" => Self::word_and,
+                "( a:boolean b:boolean -- result:boolean )",
+                "Logical AND of two values (truthiness-coerced); an array operand errors — use ALL?";
+            "NOT" => Self::word_not,
+                "( bool:boolean -- result:boolean )",
+                "Logical NOT";
+            "XOR" => Self::word_xor,
+                "( a:boolean b:boolean -- result:boolean )",
+                "Logical XOR: true when exactly one operand is truthy";
+            "NAND" => Self::word_nand,
+                "( a:boolean b:boolean -- result:boolean )",
+                "Logical NAND: true unless both operands are truthy";
+        });
     }
 
     /// OR: ( a b -- bool ) — strictly two operands; an ARRAY operand is an
@@ -249,29 +237,25 @@ impl BooleanModule {
     // ===== Membership Operations =====
 
     fn register_membership_words(module: &mut Module) {
-        // CONTAINS? (haystack-first; replaces the classic item-first IN,
-        // dropped per the no-aliases decision)
-        let word = Arc::new(ModuleWord::new(
-            "CONTAINS?".to_string(),
-            Self::word_contains_q,
-        ));
-        module.add_exportable_word(word);
-
-        // ANY?
-        let word = Arc::new(ModuleWord::new("ANY?".to_string(), Self::word_any_q));
-        module.add_exportable_word(word);
-
-        // ALL?
-        let word = Arc::new(ModuleWord::new("ALL?".to_string(), Self::word_all_q));
-        module.add_exportable_word(word);
-
-        // ANY
-        let word = Arc::new(ModuleWord::new("ANY".to_string(), Self::word_any));
-        module.add_exportable_word(word);
-
-        // ALL
-        let word = Arc::new(ModuleWord::new("ALL".to_string(), Self::word_all));
-        module.add_exportable_word(word);
+        // CONTAINS? is haystack-first; it replaces the classic item-first
+        // IN, dropped per the no-aliases decision
+        register_words!(module, {
+            "CONTAINS?" => Self::word_contains_q,
+                "( haystack:any[] needle:any -- bool:boolean )",
+                "Check if haystack array contains needle. Container-first arg order.";
+            "ANY?" => Self::word_any_q,
+                "( bools:boolean[] -- result:boolean )",
+                "Returns true if any element of the array is truthy. False for empty array.";
+            "ALL?" => Self::word_all_q,
+                "( bools:boolean[] -- result:boolean )",
+                "Returns true if all elements of the array are truthy. True for empty array.";
+            "ANY" => Self::word_any,
+                "( items1:any[] items2:any[] -- any:boolean )",
+                "Check if any item from items1 is in items2";
+            "ALL" => Self::word_all,
+                "( items1:any[] items2:any[] -- all:boolean )",
+                "Check if all items from items2 are in items1";
+        });
     }
 
     /// CONTAINS?: ( haystack:any[] needle -- bool ) — container-first arg
@@ -374,9 +358,11 @@ impl BooleanModule {
     // ===== Conversion Operations =====
 
     fn register_conversion_words(module: &mut Module) {
-        // >BOOL
-        let word = Arc::new(ModuleWord::new(">BOOL".to_string(), Self::word_to_bool));
-        module.add_exportable_word(word);
+        register_words!(module, {
+            ">BOOL" => Self::word_to_bool,
+                "( a:any -- bool:boolean )",
+                "Convert to boolean (JavaScript truthiness: empty arrays are truthy, NaN is falsy)";
+        });
     }
 
     fn word_to_bool(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {

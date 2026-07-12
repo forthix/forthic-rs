@@ -17,10 +17,9 @@
 
 use crate::errors::ForthicError;
 use crate::literals::ForthicValue;
-use crate::module::{register_words, InterpreterContext, Module, ModuleWord};
+use crate::module::{register_words, InterpreterContext, Module};
 use indexmap::IndexMap;
 use std::collections::HashSet;
-use std::sync::Arc;
 
 /// SLICE pads out-of-range indexes, so a huge span would materialize a huge
 /// array; guard it (same limit as forthic-ts)
@@ -68,45 +67,38 @@ impl ArrayModule {
     // ===== Access Operations =====
 
     fn register_access_words(module: &mut Module) {
-        // LENGTH
-        let word = Arc::new(ModuleWord::new("LENGTH".to_string(), Self::word_length));
-        module.add_exportable_word(word);
-
-        // NTH
-        let word = Arc::new(ModuleWord::new("NTH".to_string(), Self::word_nth));
-        module.add_exportable_word(word);
-
-        // FIRST
-        let word = Arc::new(ModuleWord::new("FIRST".to_string(), Self::word_first));
-        module.add_exportable_word(word);
-
-        // LAST
-        let word = Arc::new(ModuleWord::new("LAST".to_string(), Self::word_last));
-        module.add_exportable_word(word);
-
-        // SLICE
-        let word = Arc::new(ModuleWord::new("SLICE".to_string(), Self::word_slice));
-        module.add_exportable_word(word);
-
-        // TAKE
-        let word = Arc::new(ModuleWord::new("TAKE".to_string(), Self::word_take));
-        module.add_exportable_word(word);
-
-        // SKIP (ts-canonical name; this word was previously misnamed DROP,
-        // which in ts core means pop-top-of-stack — a cross-runtime landmine)
-        let word = Arc::new(ModuleWord::new("SKIP".to_string(), Self::word_skip));
-        module.add_exportable_word(word);
-
-        // TAKE-LAST
-        let word = Arc::new(ModuleWord::new(
-            "TAKE-LAST".to_string(),
-            Self::word_take_last,
-        ));
-        module.add_exportable_word(word);
-
-        // MAP
-        let word = Arc::new(ModuleWord::new("MAP".to_string(), Self::word_map));
-        module.add_exportable_word(word);
+        // SKIP is the ts-canonical name; this word was previously misnamed
+        // DROP, which in ts core means pop-top-of-stack — a cross-runtime
+        // landmine
+        register_words!(module, {
+            "LENGTH" => Self::word_length,
+                "( container:any -- length:number )",
+                "Length of an array or record (strings count characters; 0 for null). For strings prefer STR-LENGTH.";
+            "NTH" => Self::word_nth,
+                "( container:any n:number -- item:any )",
+                "Get nth element from array or record (insertion order; null if out of range)";
+            "FIRST" => Self::word_first,
+                "( container:any -- item:any )",
+                "Get first element from array or record (insertion order for records)";
+            "LAST" => Self::word_last,
+                "( container:any -- item:any )",
+                "Get last element from array or record";
+            "SLICE" => Self::word_slice,
+                "( container:any start:number end:number -- result:any )",
+                "Extract slice from array or record (negative indices count from the end; out-of-range indices pad arrays with null)";
+            "TAKE" => Self::word_take,
+                "( container:any n:number [options:WordOptions] -- result:any )",
+                "Take first n elements (record in -> record out, insertion order). Option push_rest (bool) also pushes the remainder.";
+            "SKIP" => Self::word_skip,
+                "( container:any n:number -- result:any )",
+                "Skip first n elements from array or record";
+            "TAKE-LAST" => Self::word_take_last,
+                "( container:any n:number -- result:any )",
+                "Take last n elements from array or record (insertion order for records)";
+            "MAP" => Self::word_map,
+                "( items:any forthic:string [options:WordOptions] -- mapped:any )",
+                "Map function over items. Options: with_key (bool), depth (num), outcomes (bool) — with outcomes each element maps to an ok/error record and per-element failures don't abort.";
+        });
     }
 
     /// MAP: ( items forthic [options] -- result )
@@ -648,31 +640,73 @@ impl ArrayModule {
     fn register_higher_order_words(module: &mut Module) {
         register_words!(module, {
             "FILTER" => Self::word_filter,
+                "( container:any forthic:string [options:WordOptions] -- filtered:any )",
+                "Filter items with predicate (record in -> record out). Options: with_key (bool).";
             "FOREACH" => Self::word_foreach,
+                "( items:any forthic:string [options:WordOptions] -- ? )",
+                "Execute forthic for each item. Options: with_key (bool). For error tolerance compose with TRY or MAP outcomes.";
             "REDUCE" => Self::word_reduce,
+                "( container:any initial:any forthic:string -- result:any )",
+                "Reduce array or record with accumulator; the forthic must net ( acc item -- acc )";
             "FIND" => Self::word_find,
+                "( items:any forthic:string -- item:any )",
+                "Return the first item where forthic returns truthy, or null if none (short-circuits)";
             "COUNT" => Self::word_count,
+                "( items:any forthic:string -- n:number )",
+                "Count items where forthic returns truthy";
             "SORT" => Self::word_sort,
+                "( container:any[] [options:WordOptions] -- sorted:any[] )",
+                "Sort container (stable; null sorts last). The comparator option is a KEY FUNCTION: it maps each element to its sort key.";
             "SORT-BY" => Self::word_sort_by,
+                "( items:any[] forthic:string -- sorted:any[] )",
+                "Sort items by the value forthic produces (ascending, stable)";
             "MIN-BY" => Self::word_min_by,
+                "( items:any[] forthic:string -- item:any )",
+                "Return the item with the smallest value produced by forthic. Null on empty input.";
             "MAX-BY" => Self::word_max_by,
+                "( items:any[] forthic:string -- item:any )",
+                "Return the item with the largest value produced by forthic. Null on empty input.";
             "UNIQUE-BY" => Self::word_unique_by,
+                "( items:any[] forthic:string -- items:any[] )",
+                "Dedupe items by the key forthic produces (keeps first occurrence)";
             "TIMES-RUN" => Self::word_times_run,
+                "( num_times:number forthic:string -- )",
+                "Run forthic num_times. Each invocation runs in the current stack — no automatic per-iteration value passing.";
             "ZIP-WITH" => Self::word_zip_with,
+                "( container1:any[] container2:any[] forthic:string -- result:any[] )",
+                "Zip two arrays or two records element-wise with a combining function ( v1 v2 -- combined )";
             "MAP-AT" => Self::word_map_at,
+                "( container:any key:any forthic:string -- container:any )",
+                "Apply forthic to the value at key/index (or at a path, given an array), returning a new container with that slot transformed (jq's |= operator)";
         });
     }
 
     fn register_query_words(module: &mut Module) {
         register_words!(module, {
             "SORT-U" => Self::word_sort_u,
+                "( items:any[] -- items:any[] )",
+                "Sort an array and remove duplicates (bash sort -u)";
             "GROUP-BY" => Self::word_group_by,
+                "( items:any forthic:string [options:WordOptions] -- grouped:record )",
+                "Group items into a record keyed by the function's result. Options: with_key (bool).";
             "GROUP-BY-FIELD" => Self::word_group_by_field,
+                "( container:any[] field:string -- grouped:record )",
+                "Group records by field value; an array field value puts the element in every named group";
             "BY-FIELD" => Self::word_by_field,
+                "( container:any[] field:string -- indexed:record )",
+                "Index records by field value (last wins on duplicates; falsy elements are skipped)";
             "GROUPS-OF" => Self::word_groups_of,
+                "( container:any[] n:number -- groups:any[] )",
+                "Split array (or record entries) into groups of size n; the last group may be short";
             "INDEX" => Self::word_index,
+                "( items:any[] forthic:string -- indexed:record )",
+                "Bucket items by the array of string keys forthic returns per item (keys are lowercased)";
             "KEY-OF" => Self::word_key_of,
+                "( container:any value:any -- key:any )",
+                "Find the first index (arrays) or key (records) whose element equals value; null if absent";
             "NUMBERED" => Self::word_numbered,
+                "( items:any[] -- pairs:any[] )",
+                "Pair each item with its index: [v0 v1 v2] -> [[0 v0] [1 v1] [2 v2]]. (Python's enumerate.)";
         });
     }
 
@@ -1450,9 +1484,11 @@ impl ArrayModule {
     // ===== Transform Operations =====
 
     fn register_transform_words(module: &mut Module) {
-        // REVERSE
-        let word = Arc::new(ModuleWord::new("REVERSE".to_string(), Self::word_reverse));
-        module.add_exportable_word(word);
+        register_words!(module, {
+            "REVERSE" => Self::word_reverse,
+                "( container:any -- container:any )",
+                "Reverse array (non-arrays pass through unchanged)";
+        });
     }
 
     fn word_reverse(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
@@ -1473,13 +1509,14 @@ impl ArrayModule {
     // ===== Combine Operations =====
 
     fn register_combine_words(module: &mut Module) {
-        // APPEND
-        let word = Arc::new(ModuleWord::new("APPEND".to_string(), Self::word_append));
-        module.add_exportable_word(word);
-
-        // ZIP
-        let word = Arc::new(ModuleWord::new("ZIP".to_string(), Self::word_zip));
-        module.add_exportable_word(word);
+        register_words!(module, {
+            "APPEND" => Self::word_append,
+                "( array:any[] item:any -- array:any[] )",
+                "Append item to array; for records the item is a [key, value] pair";
+            "ZIP" => Self::word_zip,
+                "( container1:any[] container2:any[] -- result:any[] )",
+                "Zip two arrays into array of pairs (truncates to the shorter length)";
+        });
     }
 
     fn word_append(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
@@ -1533,27 +1570,20 @@ impl ArrayModule {
     // ===== Filter Operations =====
 
     fn register_filter_words(module: &mut Module) {
-        // UNIQUE
-        let word = Arc::new(ModuleWord::new("UNIQUE".to_string(), Self::word_unique));
-        module.add_exportable_word(word);
-
-        // DIFFERENCE
-        let word = Arc::new(ModuleWord::new(
-            "DIFFERENCE".to_string(),
-            Self::word_difference,
-        ));
-        module.add_exportable_word(word);
-
-        // INTERSECTION
-        let word = Arc::new(ModuleWord::new(
-            "INTERSECTION".to_string(),
-            Self::word_intersection,
-        ));
-        module.add_exportable_word(word);
-
-        // UNION
-        let word = Arc::new(ModuleWord::new("UNION".to_string(), Self::word_union));
-        module.add_exportable_word(word);
+        register_words!(module, {
+            "UNIQUE" => Self::word_unique,
+                "( array:any[] -- array:any[] )",
+                "Remove duplicates from array";
+            "DIFFERENCE" => Self::word_difference,
+                "( lcontainer:any rcontainer:any -- result:any )",
+                "Set difference between two containers (record left: drop entries whose key is in the right)";
+            "INTERSECTION" => Self::word_intersection,
+                "( lcontainer:any rcontainer:any -- result:any )",
+                "Set intersection between two containers (record left: keep entries whose key is in the right)";
+            "UNION" => Self::word_union,
+                "( lcontainer:any rcontainer:any -- result:any )",
+                "Set union between two arrays (duplicates removed, left-first order)";
+        });
     }
 
     fn word_unique(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
@@ -1665,17 +1695,17 @@ impl ArrayModule {
     // ===== Utility Operations =====
 
     fn register_utility_words(module: &mut Module) {
-        // FLATTEN
-        let word = Arc::new(ModuleWord::new("FLATTEN".to_string(), Self::word_flatten));
-        module.add_exportable_word(word);
-
-        // RANGE
-        let word = Arc::new(ModuleWord::new("RANGE".to_string(), Self::word_range));
-        module.add_exportable_word(word);
-
-        // UNPACK
-        let word = Arc::new(ModuleWord::new("UNPACK".to_string(), Self::word_unpack));
-        module.add_exportable_word(word);
+        register_words!(module, {
+            "FLATTEN" => Self::word_flatten,
+                "( container:any [options:WordOptions] -- flat:any )",
+                "Flatten nested arrays or records (fully by default; the depth option limits descent; records flatten to tab-joined key paths)";
+            "RANGE" => Self::word_range,
+                "( start:number end:number -- numbers:number[] )",
+                "Generate inclusive integer range from start to end (e.g. 1 5 RANGE -> [1,2,3,4,5]). Empty if start > end.";
+            "UNPACK" => Self::word_unpack,
+                "( container:any -- elements:any )",
+                "Unpack array or record elements onto stack (insertion order for records)";
+        });
     }
 
     /// FLATTEN: ( container [options] -- flat )

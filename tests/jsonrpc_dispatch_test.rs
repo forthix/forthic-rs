@@ -5,6 +5,9 @@
 //! expects. HTTP-level behavior (auth, body limits, envelope validation)
 //! is Phase 3 and tested there.
 
+// ForthicError is large; accepted trade-off (see lib.rs / backlog item 11)
+#![allow(clippy::result_large_err)]
+
 use forthic::jsonrpc::{dispatch, ForthicJsonRpcServicer, JsonRpcRequest};
 use serde_json::{json, Value};
 
@@ -320,4 +323,39 @@ fn test_rich_values_round_trip_through_execution() {
         json!({ "word_name": "DUP", "stack": [ zoned ] }),
     );
     assert_eq!(response["result"]["result_stack"], json!([zoned, zoned]));
+}
+
+#[test]
+fn test_get_module_info_returns_real_word_docs() {
+    use forthic::module::{Module, ModuleWord};
+    use std::sync::Arc;
+
+    let mut module = Module::new("host".to_string());
+    module.add_exportable_word(Arc::new(ModuleWord::with_doc(
+        "GREET".to_string(),
+        |context| {
+            context.stack_push(forthic::literals::ForthicValue::String("hi".to_string()));
+            Ok(())
+        },
+        "( -- greeting:string )",
+        "Push a greeting",
+    )));
+    // Doc-less direct registration falls back to the placeholder shape
+    module.add_exportable_word(Arc::new(ModuleWord::new("MYSTERY".to_string(), |_| Ok(()))));
+
+    let mut servicer = ForthicJsonRpcServicer::new();
+    servicer.add_runtime_module(module);
+    let request: JsonRpcRequest = serde_json::from_value(serde_json::json!({
+        "jsonrpc": "2.0", "id": 1, "method": "getModuleInfo",
+        "params": { "module_name": "host" }
+    }))
+    .unwrap();
+    let response = dispatch(&servicer, &request, false);
+
+    let words = response["result"]["words"].as_array().unwrap();
+    assert_eq!(words[0]["name"], "GREET");
+    assert_eq!(words[0]["stack_effect"], "( -- greeting:string )");
+    assert_eq!(words[0]["description"], "Push a greeting");
+    assert_eq!(words[1]["name"], "MYSTERY");
+    assert_eq!(words[1]["stack_effect"], "( -- )");
 }
