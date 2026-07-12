@@ -65,12 +65,17 @@ fixes (empty arrays are truthy, NaN is falsy — affects >BOOL/IF/ANY?).
 PRINT + core INTERPOLATE deferred to Batch 4: they share the
 variable-interpolation machinery with string INTERPOLATE.
 
-**Batch 2 — higher-order & sorting:**
+**Batch 2 — higher-order & sorting: DONE (feat/word-batch2):**
 FILTER, FOREACH (no push_error — 'W' TRY FOREACH per #38), REDUCE, FIND,
 COUNT, SORT (comparator option, CoW #32), SORT-BY, MIN-BY/MAX-BY (null on
 empty), UNIQUE-BY (keeps first), SORT-U, GROUP-BY, GROUP-BY-FIELD, BY-FIELD,
 GROUPS-OF, INDEX, KEY-OF, NUMBERED, ZIP-WITH, TIMES-RUN (2-arg), MAP-AT
-(single key or path array, jq |=).
+(single key or path array, jq |=). Sanctioned deviations (documented in
+code): one shared natural_cmp total order instead of JS relational
+coercion (NULL sorts last); structural values_equal instead of === for
+KEY-OF/UNIQUE-BY/SORT-U dedupe; value_to_key_string for group-key
+coercion; fractional counts truncate. SORT's comparator option is a KEY
+FUNCTION (the ts docstring's "SWAP -" example is stale).
 
 **Batch 3 — records & JQ paths (rs record module is thinnest):**
 JQ@ (null on miss, [] iterates+flattens), JQ! (auto-creates, no []), JQ-DEL,

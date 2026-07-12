@@ -4,9 +4,12 @@
 //
 // ## Categories
 // - Access: NTH, FIRST, LAST, SLICE, TAKE, TAKE-LAST, SKIP, LENGTH
-// - Transform: REVERSE
+// - Transform: REVERSE, MAP, MAP-AT, ZIP-WITH, NUMBERED
 // - Combine: APPEND, ZIP
-// - Filter: UNIQUE, DIFFERENCE, INTERSECTION, UNION
+// - Filter: UNIQUE, UNIQUE-BY, DIFFERENCE, INTERSECTION, UNION, FILTER
+// - Higher-order: FOREACH, REDUCE, FIND, COUNT, TIMES-RUN
+// - Sort: SORT, SORT-BY, SORT-U, MIN-BY, MAX-BY
+// - Group: GROUP-BY, GROUP-BY-FIELD, BY-FIELD, GROUPS-OF, INDEX, KEY-OF
 // - Utility: FLATTEN, RANGE, UNPACK
 //
 // Record-aware words follow the ts #33 contract: record in -> record out,
@@ -46,6 +49,8 @@ impl ArrayModule {
         Self::register_combine_words(&mut module);
         Self::register_filter_words(&mut module);
         Self::register_utility_words(&mut module);
+        Self::register_higher_order_words(&mut module);
+        Self::register_query_words(&mut module);
 
         Self { module }
     }
@@ -636,6 +641,807 @@ impl ArrayModule {
 
         context.stack_push(result);
         Ok(())
+    }
+
+    // ===== Higher-Order Words (Batch 2 — run Forthic per element) =====
+
+    fn register_higher_order_words(module: &mut Module) {
+        for (name, handler) in [
+            (
+                "FILTER",
+                Self::word_filter as fn(&mut dyn InterpreterContext) -> Result<(), ForthicError>,
+            ),
+            ("FOREACH", Self::word_foreach),
+            ("REDUCE", Self::word_reduce),
+            ("FIND", Self::word_find),
+            ("COUNT", Self::word_count),
+            ("SORT", Self::word_sort),
+            ("SORT-BY", Self::word_sort_by),
+            ("MIN-BY", Self::word_min_by),
+            ("MAX-BY", Self::word_max_by),
+            ("UNIQUE-BY", Self::word_unique_by),
+            ("TIMES-RUN", Self::word_times_run),
+            ("ZIP-WITH", Self::word_zip_with),
+            ("MAP-AT", Self::word_map_at),
+        ] {
+            let word = Arc::new(ModuleWord::new(name.to_string(), handler));
+            module.add_exportable_word(word);
+        }
+    }
+
+    fn register_query_words(module: &mut Module) {
+        for (name, handler) in [
+            (
+                "SORT-U",
+                Self::word_sort_u as fn(&mut dyn InterpreterContext) -> Result<(), ForthicError>,
+            ),
+            ("GROUP-BY", Self::word_group_by),
+            ("GROUP-BY-FIELD", Self::word_group_by_field),
+            ("BY-FIELD", Self::word_by_field),
+            ("GROUPS-OF", Self::word_groups_of),
+            ("INDEX", Self::word_index),
+            ("KEY-OF", Self::word_key_of),
+            ("NUMBERED", Self::word_numbered),
+        ] {
+            let word = Arc::new(ModuleWord::new(name.to_string(), handler));
+            module.add_exportable_word(word);
+        }
+    }
+
+    /// Push item (and optionally its key/index beneath it), run the code,
+    /// pop the result — the per-element protocol shared by the batch-2 words
+    fn run_on_item(
+        context: &mut dyn InterpreterContext,
+        key: Option<ForthicValue>,
+        item: ForthicValue,
+        forthic: &str,
+    ) -> Result<ForthicValue, ForthicError> {
+        if let Some(key) = key {
+            context.stack_push(key);
+        }
+        context.stack_push(item);
+        context.run(forthic)?;
+        context.stack_pop()
+    }
+
+    /// Total order over ForthicValues for SORT/SORT-BY/MIN-BY/MAX-BY: numbers
+    /// numeric (Int and Float share the number line), strings lexicographic,
+    /// NULL sorts LAST (ts natural_cmp), cross-type by fixed rank. Ties are
+    /// Equal, and the sorts are stable, so ties keep input order.
+    fn natural_cmp(a: &ForthicValue, b: &ForthicValue) -> std::cmp::Ordering {
+        use std::cmp::Ordering;
+        fn rank(v: &ForthicValue) -> u8 {
+            match v {
+                ForthicValue::Bool(_) => 0,
+                ForthicValue::Int(_) | ForthicValue::Float(_) => 1,
+                ForthicValue::String(_) => 2,
+                ForthicValue::Date(_) => 3,
+                ForthicValue::Time(_) => 4,
+                ForthicValue::DateTime(_) => 5,
+                ForthicValue::Array(_) => 6,
+                ForthicValue::Record(_) => 7,
+                ForthicValue::Null => 9, // null sorts last
+                _ => 8,
+            }
+        }
+        fn as_f64(v: &ForthicValue) -> Option<f64> {
+            match v {
+                ForthicValue::Int(i) => Some(*i as f64),
+                ForthicValue::Float(f) => Some(*f),
+                _ => None,
+            }
+        }
+        match (a, b) {
+            (ForthicValue::Null, ForthicValue::Null) => Ordering::Equal,
+            _ => match (as_f64(a), as_f64(b)) {
+                (Some(x), Some(y)) => x.partial_cmp(&y).unwrap_or(Ordering::Equal),
+                _ => match (a, b) {
+                    (ForthicValue::String(x), ForthicValue::String(y)) => x.cmp(y),
+                    (ForthicValue::Bool(x), ForthicValue::Bool(y)) => x.cmp(y),
+                    (ForthicValue::Date(x), ForthicValue::Date(y)) => x.cmp(y),
+                    (ForthicValue::Time(x), ForthicValue::Time(y)) => x.cmp(y),
+                    (ForthicValue::DateTime(x), ForthicValue::DateTime(y)) => x.cmp(y),
+                    _ => rank(a).cmp(&rank(b)),
+                },
+            },
+        }
+    }
+
+    /// Scalar value -> record key string, matching JS property-key coercion
+    /// (5 -> "5", true -> "true", null -> "null"); container keys error
+    fn value_to_key_string(v: &ForthicValue) -> Result<String, ForthicError> {
+        match v {
+            ForthicValue::String(s) => Ok(s.clone()),
+            ForthicValue::Int(i) => Ok(i.to_string()),
+            ForthicValue::Float(f) => Ok(f.to_string()),
+            ForthicValue::Bool(b) => Ok(b.to_string()),
+            ForthicValue::Null => Ok("null".to_string()),
+            other => Err(ForthicError::InvalidOperation {
+                forthic: String::new(),
+                message: format!("Cannot use {other:?} as a record key"),
+                location: None,
+                cause: None,
+            }),
+        }
+    }
+
+    /// Container -> (key, value) pairs: arrays yield Int indexes, records
+    /// yield String keys in insertion order. NULL/other -> empty.
+    fn keyed_items(container: &ForthicValue) -> Vec<(ForthicValue, ForthicValue)> {
+        match container {
+            ForthicValue::Array(arr) => arr
+                .iter()
+                .enumerate()
+                .map(|(i, v)| (ForthicValue::Int(i as i64), v.clone()))
+                .collect(),
+            ForthicValue::Record(rec) => rec
+                .iter()
+                .map(|(k, v)| (ForthicValue::String(k.clone()), v.clone()))
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// FILTER: ( container forthic [options] -- filtered ) — keep elements
+    /// whose predicate result is truthy. Record in -> record out (keys and
+    /// insertion order preserved); falsy container passes through unchanged.
+    fn word_filter(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let options = Self::pop_options(context);
+        let forthic = Self::pop_code(context, "FILTER")?;
+        let container = context.stack_pop()?;
+        let with_key = options
+            .as_ref()
+            .and_then(|o| o.get_bool("with_key"))
+            .unwrap_or(false);
+
+        let result = match &container {
+            ForthicValue::Array(arr) => {
+                let mut kept = Vec::new();
+                for (i, item) in arr.iter().enumerate() {
+                    let key = with_key.then(|| ForthicValue::Int(i as i64));
+                    if Self::run_on_item(context, key, item.clone(), &forthic)?.is_truthy() {
+                        kept.push(item.clone());
+                    }
+                }
+                ForthicValue::Array(kept)
+            }
+            ForthicValue::Record(rec) => {
+                let mut kept = IndexMap::new();
+                for (k, item) in rec {
+                    let key = with_key.then(|| ForthicValue::String(k.clone()));
+                    if Self::run_on_item(context, key, item.clone(), &forthic)?.is_truthy() {
+                        kept.insert(k.clone(), item.clone());
+                    }
+                }
+                ForthicValue::Record(kept)
+            }
+            _ => container.clone(),
+        };
+        context.stack_push(result);
+        Ok(())
+    }
+
+    /// FOREACH: ( items forthic [options] -- ? ) — run the code per element;
+    /// whatever it leaves stays on the stack. Error tolerance is
+    /// composition: items "'W' TRY" FOREACH-style via MAP outcomes.
+    fn word_foreach(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let options = Self::pop_options(context);
+        let forthic = Self::pop_code(context, "FOREACH")?;
+        let container = context.stack_pop()?;
+        let with_key = options
+            .as_ref()
+            .and_then(|o| o.get_bool("with_key"))
+            .unwrap_or(false);
+
+        for (key, item) in Self::keyed_items(&container) {
+            if with_key {
+                context.stack_push(key);
+            }
+            context.stack_push(item);
+            context.run(&forthic)?;
+        }
+        Ok(())
+    }
+
+    /// REDUCE: ( container initial forthic -- result ) — push initial once,
+    /// run the code per element (which must net `( acc item -- acc )`),
+    /// pop once at the end. Records reduce over their values.
+    fn word_reduce(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let forthic = Self::pop_code(context, "REDUCE")?;
+        let initial = context.stack_pop()?;
+        let container = context.stack_pop()?;
+
+        context.stack_push(initial);
+        for (_, item) in Self::keyed_items(&container) {
+            context.stack_push(item);
+            context.run(&forthic)?;
+        }
+        let result = context.stack_pop()?;
+        context.stack_push(result);
+        Ok(())
+    }
+
+    /// FIND: ( items forthic -- item|NULL ) — first element whose predicate
+    /// is truthy; SHORT-CIRCUITS (remaining elements never run)
+    fn word_find(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let forthic = Self::pop_code(context, "FIND")?;
+        let container = context.stack_pop()?;
+
+        for (_, item) in Self::keyed_items(&container) {
+            if Self::run_on_item(context, None, item.clone(), &forthic)?.is_truthy() {
+                context.stack_push(item);
+                return Ok(());
+            }
+        }
+        context.stack_push(ForthicValue::Null);
+        Ok(())
+    }
+
+    /// COUNT: ( items forthic -- n ) — number of elements whose predicate is
+    /// truthy (runs the code on every element)
+    fn word_count(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let forthic = Self::pop_code(context, "COUNT")?;
+        let container = context.stack_pop()?;
+
+        let mut count = 0i64;
+        for (_, item) in Self::keyed_items(&container) {
+            if Self::run_on_item(context, None, item, &forthic)?.is_truthy() {
+                count += 1;
+            }
+        }
+        context.stack_push(ForthicValue::Int(count));
+        Ok(())
+    }
+
+    /// SORT: ( container [options] -- sorted ) — stable natural_cmp sort
+    /// (NULL sorts last). The `comparator` option is a KEY FUNCTION, not a
+    /// two-argument comparator (the ts docstring's "SWAP -" example is
+    /// stale): each element is pushed, the code runs, and the popped value
+    /// is that element's sort key. Keys are computed for all elements in
+    /// input order BEFORE sorting. Non-arrays (including records) pass
+    /// through unchanged.
+    fn word_sort(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let options = Self::pop_options(context);
+        let container = context.stack_pop()?;
+        let comparator = options.as_ref().and_then(|o| o.get_string("comparator"));
+
+        let ForthicValue::Array(arr) = container else {
+            context.stack_push(container);
+            return Ok(());
+        };
+
+        let sorted = match comparator {
+            None => {
+                let mut items = arr;
+                items.sort_by(Self::natural_cmp);
+                items
+            }
+            Some(forthic) => Self::sort_by_key(context, arr, forthic)?,
+        };
+        context.stack_push(ForthicValue::Array(sorted));
+        Ok(())
+    }
+
+    /// SORT-BY: ( items forthic -- sorted ) — ascending by the code-produced
+    /// key; stable (ties keep input order). Non-arrays pass through.
+    fn word_sort_by(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let forthic = Self::pop_code(context, "SORT-BY")?;
+        let container = context.stack_pop()?;
+        let ForthicValue::Array(arr) = container else {
+            context.stack_push(container);
+            return Ok(());
+        };
+        let sorted = Self::sort_by_key(context, arr, &forthic)?;
+        context.stack_push(ForthicValue::Array(sorted));
+        Ok(())
+    }
+
+    /// Decorate (compute all keys in input order) — stable sort — undecorate
+    fn sort_by_key(
+        context: &mut dyn InterpreterContext,
+        items: Vec<ForthicValue>,
+        forthic: &str,
+    ) -> Result<Vec<ForthicValue>, ForthicError> {
+        let mut decorated = Vec::with_capacity(items.len());
+        for item in items {
+            let key = Self::run_on_item(context, None, item.clone(), forthic)?;
+            decorated.push((key, item));
+        }
+        decorated.sort_by(|(ka, _), (kb, _)| Self::natural_cmp(ka, kb));
+        Ok(decorated.into_iter().map(|(_, item)| item).collect())
+    }
+
+    /// MIN-BY / MAX-BY: ( items forthic -- item|NULL ) — smallest/largest by
+    /// code-produced key; ties keep the EARLIEST element; NULL for
+    /// non-array or empty input. Runs the code on every element.
+    fn word_min_by(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        Self::extreme_by(context, "MIN-BY", std::cmp::Ordering::Less)
+    }
+
+    fn word_max_by(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        Self::extreme_by(context, "MAX-BY", std::cmp::Ordering::Greater)
+    }
+
+    fn extreme_by(
+        context: &mut dyn InterpreterContext,
+        word: &str,
+        wanted: std::cmp::Ordering,
+    ) -> Result<(), ForthicError> {
+        let forthic = Self::pop_code(context, word)?;
+        let container = context.stack_pop()?;
+        let ForthicValue::Array(arr) = container else {
+            context.stack_push(ForthicValue::Null);
+            return Ok(());
+        };
+
+        let mut best: Option<(ForthicValue, ForthicValue)> = None;
+        for item in arr {
+            let key = Self::run_on_item(context, None, item.clone(), &forthic)?;
+            let better = match &best {
+                None => true,
+                // Strict comparison: ties keep the earliest element
+                Some((best_key, _)) => Self::natural_cmp(&key, best_key) == wanted,
+            };
+            if better {
+                best = Some((key, item));
+            }
+        }
+        context.stack_push(best.map(|(_, item)| item).unwrap_or(ForthicValue::Null));
+        Ok(())
+    }
+
+    /// UNIQUE-BY: ( items forthic -- items ) — dedupe by code-produced key
+    /// (structural equality), keeping the FIRST occurrence, input order
+    /// preserved. Non-arrays pass through.
+    fn word_unique_by(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let forthic = Self::pop_code(context, "UNIQUE-BY")?;
+        let container = context.stack_pop()?;
+        let ForthicValue::Array(arr) = container else {
+            context.stack_push(container);
+            return Ok(());
+        };
+
+        let mut seen: Vec<ForthicValue> = Vec::new();
+        let mut kept = Vec::new();
+        for item in arr {
+            let key = Self::run_on_item(context, None, item.clone(), &forthic)?;
+            if !seen
+                .iter()
+                .any(|s| crate::modules::standard::boolean::BooleanModule::values_equal(s, &key))
+            {
+                seen.push(key);
+                kept.push(item);
+            }
+        }
+        context.stack_push(ForthicValue::Array(kept));
+        Ok(())
+    }
+
+    /// TIMES-RUN: ( num forthic -- ) — run the code n times against the
+    /// current stack (no per-iteration values pushed). Fractional counts
+    /// truncate; NULL count or empty code is a no-op.
+    fn word_times_run(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let forthic = context.stack_pop()?;
+        let num = context.stack_pop()?;
+        let n = match num {
+            ForthicValue::Int(i) => i,
+            ForthicValue::Float(f) => f as i64,
+            _ => return Ok(()),
+        };
+        let ForthicValue::String(forthic) = forthic else {
+            return Ok(());
+        };
+        if forthic.is_empty() {
+            return Ok(());
+        }
+        for _ in 0..n.max(0) {
+            context.run(&forthic)?;
+        }
+        Ok(())
+    }
+
+    /// ZIP-WITH: ( c1 c2 forthic -- result ) — combine element-wise; the
+    /// code receives ( v1 v2 -- combined ). Array mode iterates c1 (c2
+    /// shorter pads NULL, longer truncates); record mode (c2 is a record)
+    /// iterates c1's keys, missing c2 entries are NULL.
+    fn word_zip_with(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let forthic = Self::pop_code(context, "ZIP-WITH")?;
+        let c2 = context.stack_pop()?;
+        let c1 = context.stack_pop()?;
+
+        let result = match (&c1, &c2) {
+            (ForthicValue::Array(a1), ForthicValue::Array(a2)) => {
+                let mut out = Vec::with_capacity(a1.len());
+                for (i, v1) in a1.iter().enumerate() {
+                    context.stack_push(v1.clone());
+                    context.stack_push(a2.get(i).cloned().unwrap_or(ForthicValue::Null));
+                    context.run(&forthic)?;
+                    out.push(context.stack_pop()?);
+                }
+                ForthicValue::Array(out)
+            }
+            (ForthicValue::Record(r1), ForthicValue::Record(r2)) => {
+                let mut out = IndexMap::new();
+                for (k, v1) in r1 {
+                    context.stack_push(v1.clone());
+                    context.stack_push(r2.get(k).cloned().unwrap_or(ForthicValue::Null));
+                    context.run(&forthic)?;
+                    out.insert(k.clone(), context.stack_pop()?);
+                }
+                ForthicValue::Record(out)
+            }
+            _ => ForthicValue::Array(vec![]),
+        };
+        context.stack_push(result);
+        Ok(())
+    }
+
+    /// MAP-AT: ( container key|path forthic -- container ) — transform the
+    /// value at a key (or at a path, given an array) — jq's `|=`. A missing
+    /// key, out-of-range index, or scalar mid-path returns the container
+    /// UNCHANGED, silently. Persistent update: clones along the touched
+    /// path only. Empty path transforms the whole container.
+    fn word_map_at(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let forthic = Self::pop_code(context, "MAP-AT")?;
+        let key = context.stack_pop()?;
+        let container = context.stack_pop()?;
+
+        if matches!(container, ForthicValue::Null) {
+            context.stack_push(container);
+            return Ok(());
+        }
+
+        let path: Vec<ForthicValue> = match key {
+            ForthicValue::Array(path) => path,
+            single => vec![single],
+        };
+
+        if path.is_empty() {
+            let result = Self::run_on_item(context, None, container, &forthic)?;
+            context.stack_push(result);
+            return Ok(());
+        }
+
+        let result = Self::map_at_path(context, &container, &path, &forthic)?;
+        context.stack_push(result);
+        Ok(())
+    }
+
+    fn map_at_path(
+        context: &mut dyn InterpreterContext,
+        container: &ForthicValue,
+        path: &[ForthicValue],
+        forthic: &str,
+    ) -> Result<ForthicValue, ForthicError> {
+        let (head, rest) = path.split_first().expect("non-empty path");
+        match container {
+            ForthicValue::Array(arr) => {
+                // Numeric strings coerce to indices (ts Number(head))
+                let idx = match head {
+                    ForthicValue::Int(i) => Some(*i),
+                    ForthicValue::Float(f) if f.fract() == 0.0 => Some(*f as i64),
+                    ForthicValue::String(s) => s.parse::<i64>().ok(),
+                    _ => None,
+                };
+                let Some(idx) = idx else {
+                    return Ok(container.clone());
+                };
+                if idx < 0 || idx as usize >= arr.len() {
+                    return Ok(container.clone());
+                }
+                let idx = idx as usize;
+                let new_value = if rest.is_empty() {
+                    Self::run_on_item(context, None, arr[idx].clone(), forthic)?
+                } else {
+                    Self::map_at_path(context, &arr[idx], rest, forthic)?
+                };
+                let mut out = arr.clone();
+                out[idx] = new_value;
+                Ok(ForthicValue::Array(out))
+            }
+            ForthicValue::Record(rec) => {
+                let key = Self::value_to_key_string(head)?;
+                let Some(current) = rec.get(&key) else {
+                    return Ok(container.clone());
+                };
+                let new_value = if rest.is_empty() {
+                    Self::run_on_item(context, None, current.clone(), forthic)?
+                } else {
+                    Self::map_at_path(context, current, rest, forthic)?
+                };
+                let mut out = rec.clone();
+                out.insert(key, new_value);
+                Ok(ForthicValue::Record(out))
+            }
+            // Scalar mid-path: unchanged, silently
+            other => Ok(other.clone()),
+        }
+    }
+
+    /// SORT-U: ( items -- items ) — bash `sort -u`: natural_cmp sort, then
+    /// structural dedupe keeping the first occurrence in sorted order
+    fn word_sort_u(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let container = context.stack_pop()?;
+        let ForthicValue::Array(arr) = container else {
+            context.stack_push(container);
+            return Ok(());
+        };
+        let mut items = arr;
+        items.sort_by(Self::natural_cmp);
+        let mut seen: Vec<ForthicValue> = Vec::new();
+        let mut out = Vec::new();
+        for item in items {
+            if !seen
+                .iter()
+                .any(|s| crate::modules::standard::boolean::BooleanModule::values_equal(s, &item))
+            {
+                seen.push(item.clone());
+                out.push(item);
+            }
+        }
+        context.stack_push(ForthicValue::Array(out));
+        Ok(())
+    }
+
+    /// GROUP-BY: ( items forthic [options] -- grouped ) — record of
+    /// key -> array of items; group keys are the code's popped results,
+    /// coerced to key strings; group order is first-encounter order
+    fn word_group_by(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let options = Self::pop_options(context);
+        let forthic = Self::pop_code(context, "GROUP-BY")?;
+        let container = context.stack_pop()?;
+        let with_key = options
+            .as_ref()
+            .and_then(|o| o.get_bool("with_key"))
+            .unwrap_or(false);
+
+        let mut groups: IndexMap<String, Vec<ForthicValue>> = IndexMap::new();
+        for (key, item) in Self::keyed_items(&container) {
+            let pushed_key = with_key.then_some(key);
+            let group_key_val = Self::run_on_item(context, pushed_key, item.clone(), &forthic)?;
+            let group_key = Self::value_to_key_string(&group_key_val)?;
+            groups.entry(group_key).or_default().push(item);
+        }
+        let result: IndexMap<String, ForthicValue> = groups
+            .into_iter()
+            .map(|(k, items)| (k, ForthicValue::Array(items)))
+            .collect();
+        context.stack_push(ForthicValue::Record(result));
+        Ok(())
+    }
+
+    /// Field access for the -FIELD group words: a NULL element errors
+    /// (faithful to ts, where null[field] throws); a missing field is NULL
+    fn field_of(
+        item: &ForthicValue,
+        field: &str,
+        word: &str,
+    ) -> Result<ForthicValue, ForthicError> {
+        match item {
+            ForthicValue::Record(rec) => Ok(rec.get(field).cloned().unwrap_or(ForthicValue::Null)),
+            ForthicValue::Null => Err(ForthicError::InvalidOperation {
+                forthic: String::new(),
+                message: format!("{word}: cannot read field '{field}' of NULL"),
+                location: None,
+                cause: None,
+            }),
+            _ => Ok(ForthicValue::Null),
+        }
+    }
+
+    /// GROUP-BY-FIELD: ( container field -- grouped ) — group elements by a
+    /// field's value; an ARRAY field value puts the element in EVERY named
+    /// group (multi-membership). Missing fields group under "null".
+    fn word_group_by_field(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let field = match context.stack_pop()? {
+            ForthicValue::String(s) => s,
+            other => {
+                return Err(ForthicError::InvalidOperation {
+                    forthic: String::new(),
+                    message: format!("GROUP-BY-FIELD requires a string field name, got {other:?}"),
+                    location: None,
+                    cause: None,
+                })
+            }
+        };
+        let container = context.stack_pop()?;
+
+        let mut groups: IndexMap<String, Vec<ForthicValue>> = IndexMap::new();
+        for (_, item) in Self::keyed_items(&container) {
+            let fv = Self::field_of(&item, &field, "GROUP-BY-FIELD")?;
+            match fv {
+                ForthicValue::Array(keys) => {
+                    for key_val in keys {
+                        let key = Self::value_to_key_string(&key_val)?;
+                        groups.entry(key).or_default().push(item.clone());
+                    }
+                }
+                other => {
+                    let key = Self::value_to_key_string(&other)?;
+                    groups.entry(key).or_default().push(item);
+                }
+            }
+        }
+        let result: IndexMap<String, ForthicValue> = groups
+            .into_iter()
+            .map(|(k, items)| (k, ForthicValue::Array(items)))
+            .collect();
+        context.stack_push(ForthicValue::Record(result));
+        Ok(())
+    }
+
+    /// BY-FIELD: ( container field -- indexed ) — record of field value ->
+    /// element (LAST wins on duplicates); falsy elements are skipped
+    fn word_by_field(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let field = match context.stack_pop()? {
+            ForthicValue::String(s) => s,
+            other => {
+                return Err(ForthicError::InvalidOperation {
+                    forthic: String::new(),
+                    message: format!("BY-FIELD requires a string field name, got {other:?}"),
+                    location: None,
+                    cause: None,
+                })
+            }
+        };
+        let container = context.stack_pop()?;
+
+        let mut result: IndexMap<String, ForthicValue> = IndexMap::new();
+        for (_, item) in Self::keyed_items(&container) {
+            if !item.is_truthy() {
+                continue;
+            }
+            let fv = Self::field_of(&item, &field, "BY-FIELD")?;
+            let key = Self::value_to_key_string(&fv)?;
+            result.insert(key, item);
+        }
+        context.stack_push(ForthicValue::Record(result));
+        Ok(())
+    }
+
+    /// GROUPS-OF: ( container n -- groups ) — chunk into groups of n (last
+    /// may be short). Records chunk their entries into sub-records. n <= 0
+    /// errors (checked before the NULL default); fractional n truncates.
+    fn word_groups_of(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let n_val = context.stack_pop()?;
+        let n = match n_val {
+            ForthicValue::Int(i) => i,
+            ForthicValue::Float(f) => f as i64,
+            _ => 0,
+        };
+        if n <= 0 {
+            return Err(ForthicError::InvalidOperation {
+                forthic: String::new(),
+                message: "GROUPS-OF requires group size > 0".to_string(),
+                location: None,
+                cause: None,
+            });
+        }
+        let container = context.stack_pop()?;
+        let n = n as usize;
+
+        let result = match container {
+            ForthicValue::Array(arr) => ForthicValue::Array(
+                arr.chunks(n)
+                    .map(|chunk| ForthicValue::Array(chunk.to_vec()))
+                    .collect(),
+            ),
+            ForthicValue::Record(rec) => {
+                let entries: Vec<_> = rec.into_iter().collect();
+                ForthicValue::Array(
+                    entries
+                        .chunks(n)
+                        .map(|chunk| ForthicValue::Record(chunk.iter().cloned().collect()))
+                        .collect(),
+                )
+            }
+            _ => ForthicValue::Array(vec![]),
+        };
+        context.stack_push(result);
+        Ok(())
+    }
+
+    /// INDEX: ( items forthic -- indexed ) — the code returns an array of
+    /// string keys per item; the item lands in every named bucket, with
+    /// keys LOWERCASED. Arrays only (records yield an empty record).
+    fn word_index(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let forthic = Self::pop_code(context, "INDEX")?;
+        let container = context.stack_pop()?;
+
+        let ForthicValue::Array(arr) = &container else {
+            context.stack_push(match container {
+                ForthicValue::Record(_) => ForthicValue::Record(IndexMap::new()),
+                other => other,
+            });
+            return Ok(());
+        };
+
+        let mut buckets: IndexMap<String, Vec<ForthicValue>> = IndexMap::new();
+        for item in arr {
+            let keys = Self::run_on_item(context, None, item.clone(), &forthic)?;
+            let ForthicValue::Array(keys) = keys else {
+                continue;
+            };
+            for key_val in keys {
+                let ForthicValue::String(key) = key_val else {
+                    return Err(ForthicError::InvalidOperation {
+                        forthic: String::new(),
+                        message: format!("INDEX keys must be strings, got {key_val:?}"),
+                        location: None,
+                        cause: None,
+                    });
+                };
+                buckets
+                    .entry(key.to_lowercase())
+                    .or_default()
+                    .push(item.clone());
+            }
+        }
+        let result: IndexMap<String, ForthicValue> = buckets
+            .into_iter()
+            .map(|(k, items)| (k, ForthicValue::Array(items)))
+            .collect();
+        context.stack_push(ForthicValue::Record(result));
+        Ok(())
+    }
+
+    /// KEY-OF: ( container value -- key|NULL ) — first index (arrays) or
+    /// key (records, insertion order) whose element equals the value.
+    /// Structural equality (values_equal) — a sanctioned deviation from
+    /// ts's ===, which can never match distinct-but-equal records anyway.
+    fn word_key_of(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let value = context.stack_pop()?;
+        let container = context.stack_pop()?;
+
+        let result = match &container {
+            ForthicValue::Array(arr) => arr
+                .iter()
+                .position(|v| {
+                    crate::modules::standard::boolean::BooleanModule::values_equal(v, &value)
+                })
+                .map(|i| ForthicValue::Int(i as i64))
+                .unwrap_or(ForthicValue::Null),
+            ForthicValue::Record(rec) => rec
+                .iter()
+                .find(|(_, v)| {
+                    crate::modules::standard::boolean::BooleanModule::values_equal(v, &value)
+                })
+                .map(|(k, _)| ForthicValue::String(k.clone()))
+                .unwrap_or(ForthicValue::Null),
+            _ => ForthicValue::Null,
+        };
+        context.stack_push(result);
+        Ok(())
+    }
+
+    /// NUMBERED: ( items -- pairs ) — enumerate: [[0 v0] [1 v1] ...].
+    /// Non-arrays (including records) yield an EMPTY array.
+    fn word_numbered(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let container = context.stack_pop()?;
+        let result = match container {
+            ForthicValue::Array(arr) => ForthicValue::Array(
+                arr.into_iter()
+                    .enumerate()
+                    .map(|(i, v)| ForthicValue::Array(vec![ForthicValue::Int(i as i64), v]))
+                    .collect(),
+            ),
+            _ => ForthicValue::Array(vec![]),
+        };
+        context.stack_push(result);
+        Ok(())
+    }
+
+    /// Pop a required Forthic-string code argument
+    fn pop_code(context: &mut dyn InterpreterContext, word: &str) -> Result<String, ForthicError> {
+        match context.stack_pop()? {
+            ForthicValue::String(s) => Ok(s),
+            other => Err(ForthicError::InvalidOperation {
+                forthic: String::new(),
+                message: format!("{word} requires a Forthic string, got {other:?}"),
+                location: None,
+                cause: None,
+            }),
+        }
     }
 
     /// Pop a WordOptions value if one sits on top of the stack (Forthic's

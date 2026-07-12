@@ -176,6 +176,29 @@ mirrors in the same pass — the plain-time extension (ts #36) is the model.
     change" payload check is structural (PartialEq) in rs and identity
     (===) in ts — behaviorally indistinguishable in practice.
 
+21. **ts: purge `undefined` leaks from Forthic data (ts-only change; rs
+    already conforms).** Three word boundaries let JS undefined become
+    Forthic-visible data: GROUP-BY-FIELD and BY-FIELD key missing fields as
+    "undefined" (rs: "null" — the only spelling every runtime can honor;
+    undefined has no wire tag and is on the never-port list), and ZIP-WITH
+    record mode pushes undefined onto the stack for keys missing from c2
+    (rs: NULL). Also: GROUP-BY-FIELD on a NULL element throws a raw
+    TypeError (rs: clean InvalidOperation naming the word and field).
+    Direction is rs -> ts: the rs Batch 2 implementation defined the
+    host-neutral contract; ts is the nonconforming side. After the ts fix,
+    soften rs field_of's "faithful to ts" comment to cite the contract.
+22. **Word metadata as data (Tier-2 registration design).** rs words carry
+    no stack effects or descriptions — getModuleInfo emits "( -- )"
+    placeholders. Decomposed: (a) WordDoc storage in module.rs (Word trait
+    doc() accessor, Module::word_docs, module-level description — ts
+    getWordDocs/registerModuleDoc equivalents; standalone value, no macro
+    needed); (b) #[forthic_word] proc-macro attribute in a forthic-macros
+    crate for ergonomic capture (the ts @ForthicWord decorator analog);
+    (c) consumers: getModuleInfo reads real docs (dormant until runtime
+    modules exist), REPL WORDS/HELP under the cli feature, generated/LLM
+    docs. A cheap register_words! macro_rules (registration sugar only, no
+    metadata) can land anytime.
+
 ## Immune — do not port (Rust semantics already close these)
 
 - **Copy-on-write aliasing (ts #32)**: rs values are owned; variable fetch

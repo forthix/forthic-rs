@@ -394,7 +394,7 @@ impl BooleanModule {
     // ===== Helper Functions =====
 
     /// Check if two values are equal
-    fn values_equal(a: &ForthicValue, b: &ForthicValue) -> bool {
+    pub(crate) fn values_equal(a: &ForthicValue, b: &ForthicValue) -> bool {
         match (a, b) {
             (ForthicValue::Null, ForthicValue::Null) => true,
             (ForthicValue::Bool(av), ForthicValue::Bool(bv)) => av == bv,
