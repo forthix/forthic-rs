@@ -75,19 +75,21 @@ fn test_plus_two_numbers() {
 }
 
 #[test]
-fn test_plus_array() {
+fn test_plus_array_errors() {
+    // + is strictly binary; an array operand errors, pointing at SUM
+    // (matches forthic-ts and forthic-py).
     let module = MathModule::new();
     let mut ctx = MockContext::new();
 
     let word = module.module().find_word("+").unwrap();
+    ctx.stack.push(ForthicValue::Int(0));
     ctx.stack.push(ForthicValue::Array(vec![
         ForthicValue::Int(1),
         ForthicValue::Int(2),
         ForthicValue::Int(3),
     ]));
-    word.execute(&mut ctx).unwrap();
 
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::Int(6)));
+    assert!(word.execute(&mut ctx).is_err());
 }
 
 #[test]
@@ -117,19 +119,21 @@ fn test_times_two_numbers() {
 }
 
 #[test]
-fn test_times_array() {
+fn test_times_array_errors() {
+    // * is strictly binary; an array operand errors, pointing at PRODUCT
+    // (matches forthic-ts and forthic-py).
     let module = MathModule::new();
     let mut ctx = MockContext::new();
 
     let word = module.module().find_word("*").unwrap();
+    ctx.stack.push(ForthicValue::Int(0));
     ctx.stack.push(ForthicValue::Array(vec![
         ForthicValue::Int(2),
         ForthicValue::Int(3),
         ForthicValue::Int(4),
     ]));
-    word.execute(&mut ctx).unwrap();
 
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::Int(24)));
+    assert!(word.execute(&mut ctx).is_err());
 }
 
 #[test]

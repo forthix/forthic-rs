@@ -45,19 +45,16 @@ impl MathModule {
     // ===== Arithmetic Operations =====
 
     fn register_arithmetic_words(module: &mut Module) {
-        // NOTE: rs + and * still accept an array on top of the stack and
-        // fold it (ts errors there, pointing at SUM/PRODUCT) — the docs
-        // describe THIS code.
         register_words!(module, {
             "+" => Self::word_plus,
                 "( a:number b:number -- sum:number )",
-                "Add two numbers; an array on top sums its elements instead (like SUM)";
+                "Add two numbers. For arrays use SUM.";
             "-" => Self::word_minus,
                 "( a:number b:number -- difference:number )",
                 "Subtract b from a";
             "*" => Self::word_times,
                 "( a:number b:number -- product:number )",
-                "Multiply two numbers; an array on top multiplies its elements instead (like PRODUCT)";
+                "Multiply two numbers. For arrays use PRODUCT.";
             "/" => Self::word_divide,
                 "( a:number b:number -- quotient:number )",
                 "Divide a by b (null on division by zero)";
@@ -69,21 +66,19 @@ impl MathModule {
 
     fn word_plus(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
         let b = context.stack_pop()?;
+        let a = context.stack_pop()?;
 
-        // Case 1: Array on top of stack - sum all elements
-        if let ForthicValue::Array(arr) = b {
-            let mut sum = 0.0;
-            for val in arr {
-                if let Some(num) = Self::to_number(&val) {
-                    sum += num;
-                }
-            }
-            context.stack_push(Self::number_to_value(sum));
-            return Ok(());
+        // Strictly binary — an array operand errors, pointing at SUM
+        // (matches forthic-ts and forthic-py).
+        if matches!(a, ForthicValue::Array(_)) || matches!(b, ForthicValue::Array(_)) {
+            return Err(ForthicError::InvalidOperation {
+                forthic: String::new(),
+                message: "+ takes two numbers. For an array of numbers, use SUM.".to_string(),
+                location: None,
+                cause: None,
+            });
         }
 
-        // Case 2: Two numbers
-        let a = context.stack_pop()?;
         let num_a = Self::to_number(&a).unwrap_or(0.0);
         let num_b = Self::to_number(&b).unwrap_or(0.0);
         context.stack_push(Self::number_to_value(num_a + num_b));
@@ -108,25 +103,19 @@ impl MathModule {
 
     fn word_times(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
         let b = context.stack_pop()?;
+        let a = context.stack_pop()?;
 
-        // Case 1: Array on top of stack - product of all elements
-        if let ForthicValue::Array(arr) = b {
-            let mut product = 1.0;
-            for val in arr {
-                match Self::to_number(&val) {
-                    Some(num) => product *= num,
-                    None => {
-                        context.stack_push(ForthicValue::Null);
-                        return Ok(());
-                    }
-                }
-            }
-            context.stack_push(Self::number_to_value(product));
-            return Ok(());
+        // Strictly binary — an array operand errors, pointing at PRODUCT
+        // (matches forthic-ts and forthic-py).
+        if matches!(a, ForthicValue::Array(_)) || matches!(b, ForthicValue::Array(_)) {
+            return Err(ForthicError::InvalidOperation {
+                forthic: String::new(),
+                message: "* takes two numbers. For an array of numbers, use PRODUCT.".to_string(),
+                location: None,
+                cause: None,
+            });
         }
 
-        // Case 2: Two numbers
-        let a = context.stack_pop()?;
         match (Self::to_number(&a), Self::to_number(&b)) {
             (Some(num_a), Some(num_b)) => {
                 context.stack_push(Self::number_to_value(num_a * num_b));
