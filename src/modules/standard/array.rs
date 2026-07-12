@@ -3,9 +3,9 @@
 // Array and collection operations for manipulating arrays and records.
 //
 // ## Categories
-// - Access: NTH, FIRST, LAST, SLICE, TAKE, TAKE-LAST, DROP, LENGTH
+// - Access: NTH, FIRST, LAST, SLICE, TAKE, TAKE-LAST, SKIP, LENGTH
 // - Transform: REVERSE
-// - Combine: APPEND, ZIP, CONCAT
+// - Combine: APPEND, ZIP
 // - Filter: UNIQUE, DIFFERENCE, INTERSECTION, UNION
 // - Utility: FLATTEN, RANGE, UNPACK
 //
@@ -87,8 +87,9 @@ impl ArrayModule {
         let word = Arc::new(ModuleWord::new("TAKE".to_string(), Self::word_take));
         module.add_exportable_word(word);
 
-        // DROP
-        let word = Arc::new(ModuleWord::new("DROP".to_string(), Self::word_drop));
+        // SKIP (ts-canonical name; this word was previously misnamed DROP,
+        // which in ts core means pop-top-of-stack — a cross-runtime landmine)
+        let word = Arc::new(ModuleWord::new("SKIP".to_string(), Self::word_skip));
         module.add_exportable_word(word);
 
         // TAKE-LAST
@@ -563,7 +564,7 @@ impl ArrayModule {
         Ok(())
     }
 
-    fn word_drop(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+    fn word_skip(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
         let n_val = context.stack_pop()?;
         let container = context.stack_pop()?;
 
@@ -572,7 +573,7 @@ impl ArrayModule {
             ForthicValue::Float(f) => f as i64,
             _ => 0,
         };
-        // n <= 0 skips nothing (ts SKIP returns the container unchanged)
+        // n <= 0 skips nothing (returns the container unchanged)
         if n <= 0 {
             context.stack_push(container);
             return Ok(());
@@ -680,10 +681,6 @@ impl ArrayModule {
         let word = Arc::new(ModuleWord::new("APPEND".to_string(), Self::word_append));
         module.add_exportable_word(word);
 
-        // CONCAT
-        let word = Arc::new(ModuleWord::new("CONCAT".to_string(), Self::word_concat));
-        module.add_exportable_word(word);
-
         // ZIP
         let word = Arc::new(ModuleWord::new("ZIP".to_string(), Self::word_zip));
         module.add_exportable_word(word);
@@ -711,24 +708,6 @@ impl ArrayModule {
             }
             ForthicValue::Null => ForthicValue::Array(vec![item]),
             _ => container,
-        };
-
-        context.stack_push(result);
-        Ok(())
-    }
-
-    fn word_concat(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
-        let right = context.stack_pop()?;
-        let left = context.stack_pop()?;
-
-        let result = match (left, right) {
-            (ForthicValue::Array(mut l), ForthicValue::Array(r)) => {
-                l.extend(r);
-                ForthicValue::Array(l)
-            }
-            (ForthicValue::Null, ForthicValue::Array(r)) => ForthicValue::Array(r),
-            (ForthicValue::Array(l), ForthicValue::Null) => ForthicValue::Array(l),
-            (l, _) => l,
         };
 
         context.stack_push(result);
@@ -903,36 +882,69 @@ impl ArrayModule {
         module.add_exportable_word(word);
     }
 
+    /// FLATTEN: ( container [options] -- flat )
+    ///
+    /// Fully flattens by default (ts contract — the old rs behavior
+    /// flattened exactly one level, a silent divergence); the `depth`
+    /// option limits descent. Records flatten to tab-joined key paths
+    /// ("k1\tk2"), matching ts; empty records are leaves.
     fn word_flatten(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let options = Self::pop_options(context);
         let container = context.stack_pop()?;
+        let depth = options.as_ref().and_then(|o| o.get_int("depth"));
 
         let result = match container {
-            ForthicValue::Array(arr) => {
-                let flattened = Self::flatten_recursive(&arr, 1);
-                ForthicValue::Array(flattened)
+            ForthicValue::Null => ForthicValue::Array(vec![]),
+            ForthicValue::Array(arr) => ForthicValue::Array(Self::flatten_array(&arr, depth)),
+            ForthicValue::Record(rec) => {
+                let mut out = IndexMap::new();
+                Self::flatten_record(&rec, depth, &mut out, &mut Vec::new());
+                ForthicValue::Record(out)
             }
-            _ => container,
+            other => other,
         };
 
         context.stack_push(result);
         Ok(())
     }
 
-    fn flatten_recursive(arr: &[ForthicValue], depth: i32) -> Vec<ForthicValue> {
-        if depth <= 0 {
-            return arr.to_vec();
-        }
-
-        let mut result = Vec::new();
-        for item in arr {
+    fn flatten_array(items: &[ForthicValue], depth: Option<i64>) -> Vec<ForthicValue> {
+        let mut accum = Vec::new();
+        for item in items {
             match item {
-                ForthicValue::Array(inner) => {
-                    result.extend(Self::flatten_recursive(inner, depth - 1));
+                ForthicValue::Array(inner) if depth.is_none_or(|d| d > 0) => {
+                    accum.extend(Self::flatten_array(inner, depth.map(|d| d - 1)));
                 }
-                _ => result.push(item.clone()),
+                other => accum.push(other.clone()),
             }
         }
-        result
+        accum
+    }
+
+    fn flatten_record(
+        rec: &IndexMap<String, ForthicValue>,
+        depth: Option<i64>,
+        out: &mut IndexMap<String, ForthicValue>,
+        keys: &mut Vec<String>,
+    ) {
+        for (k, item) in rec {
+            let descend = matches!(item, ForthicValue::Record(inner) if !inner.is_empty())
+                && depth.is_none_or(|d| d > 0);
+            if descend {
+                if let ForthicValue::Record(inner) = item {
+                    keys.push(k.clone());
+                    Self::flatten_record(inner, depth.map(|d| d - 1), out, keys);
+                    keys.pop();
+                }
+            } else {
+                let key = if keys.is_empty() {
+                    k.clone()
+                } else {
+                    format!("{}\t{}", keys.join("\t"), k)
+                };
+                out.insert(key, item.clone());
+            }
+        }
     }
 
     fn word_range(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
@@ -951,10 +963,25 @@ impl ArrayModule {
             _ => 0,
         };
 
+        // end < start yields an empty range (ts contract — the old rs
+        // behavior produced a reversed descending range, a silent divergence)
+        // and needs no bound; guard pathological sizes before allocating
+        // (ts #34)
+        if end >= start && end - start + 1 > MAX_MATERIALIZED_ELEMENTS {
+            return Err(ForthicError::InvalidOperation {
+                forthic: String::new(),
+                message: format!(
+                    "RANGE size {} is too large (limit {MAX_MATERIALIZED_ELEMENTS})",
+                    end - start + 1
+                ),
+                location: None,
+                cause: None,
+            });
+        }
         let range: Vec<_> = if start <= end {
             (start..=end).map(ForthicValue::Int).collect()
         } else {
-            (end..=start).rev().map(ForthicValue::Int).collect()
+            Vec::new()
         };
 
         context.stack_push(ForthicValue::Array(range));

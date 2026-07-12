@@ -83,8 +83,8 @@ fn test_map_with_key_on_arrays_pushes_index() {
 
 #[test]
 fn test_map_with_key_on_records_pushes_key() {
-    let result = run("[ [ 'a' 1 ] ] REC 'POP' [ .with_key TRUE ] ~> MAP");
-    // POP drops the value, leaving the key as the mapped result
+    let result = run("[ [ 'a' 1 ] ] REC 'DROP' [ .with_key TRUE ] ~> MAP");
+    // DROP drops the value, leaving the key as the mapped result
     match result {
         ForthicValue::Record(rec) => {
             assert_eq!(rec.get("a"), Some(&ForthicValue::String("a".to_string())));

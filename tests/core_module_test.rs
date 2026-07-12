@@ -62,11 +62,11 @@ impl InterpreterContext for MockContext {
 // Stack Operation Tests
 
 #[test]
-fn test_pop() {
+fn test_drop() {
     let module = CoreModule::new();
     let mut ctx = MockContext::new();
 
-    let word = module.module().find_word("POP").unwrap();
+    let word = module.module().find_word("DROP").unwrap();
     ctx.stack.push(ForthicValue::Int(5));
     ctx.stack.push(ForthicValue::Int(10));
     word.execute(&mut ctx).unwrap();
@@ -172,19 +172,6 @@ fn test_invalid_variable_name() {
 }
 
 // Control Flow Tests
-
-#[test]
-fn test_identity() {
-    let module = CoreModule::new();
-    let mut ctx = MockContext::new();
-
-    let word = module.module().find_word("IDENTITY").unwrap();
-    ctx.stack.push(ForthicValue::Int(5));
-    word.execute(&mut ctx).unwrap();
-
-    assert_eq!(ctx.stack.len(), 1);
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::Int(5)));
-}
 
 #[test]
 fn test_nop() {
