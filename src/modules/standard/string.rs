@@ -30,7 +30,9 @@ impl StringModule {
         Self::register_transform_words(&mut module);
         Self::register_split_join_words(&mut module);
         Self::register_pattern_words(&mut module);
-        Self::register_batch4_words(&mut module);
+        Self::register_substring_words(&mut module);
+        Self::register_regex_words(&mut module);
+        Self::register_shell_words(&mut module);
         Self::register_constant_words(&mut module);
 
         Self { module }
@@ -311,9 +313,9 @@ impl StringModule {
         Ok(())
     }
 
-    // ===== Batch 4: substrings, predicates, regex, bash-flavored =====
+    // ===== Substrings & Affixes =====
 
-    fn register_batch4_words(module: &mut Module) {
+    fn register_substring_words(module: &mut Module) {
         register_words!(module, {
             "STR-LENGTH" => Self::word_str_length,
             "SUBSTR" => Self::word_substr,
@@ -322,10 +324,24 @@ impl StringModule {
             "ENDS-WITH?" => Self::word_ends_with_q,
             "TRIM-PREFIX" => Self::word_trim_prefix,
             "TRIM-SUFFIX" => Self::word_trim_suffix,
+        });
+    }
+
+    // ===== Regular Expressions =====
+
+    fn register_regex_words(module: &mut Module) {
+        register_words!(module, {
             "RE-MATCH?" => Self::word_re_match_q,
             "RE-MATCH" => Self::word_re_match,
             "RE-MATCH-ALL" => Self::word_re_match_all,
             "RE-REPLACE" => Self::word_re_replace,
+        });
+    }
+
+    // ===== Shell-Flavored Text Processing =====
+
+    fn register_shell_words(module: &mut Module) {
+        register_words!(module, {
             "LINES" => Self::word_lines,
             "UNLINES" => Self::word_unlines,
             "GREP" => Self::word_grep,

@@ -130,14 +130,41 @@ Regexes are documented trusted input (#34) — rs regex is linear-time, so
 the ReDoS caveat is ts-only; compile failures are clean InvalidOperation
 errors (ts throws raw SyntaxError).
 
-**Batch 5 — math & datetime round-out:**
-PRODUCT, SQRT, CLAMP, FORMAT-FIXED, AM/PM, DAYS-BETWEEN, YEAR, MONTH
-(1-based), DAY-OF-WEEK (ISO 1=Mon), USE-MODULES (may belong with runtime
-work). Verify rs >DATE vs ts #35 (absolute instants in interpreter tz) and
-NOW vs #29.
+**Batch 5 — math & datetime round-out: DONE (feat/word-batch5):**
+PRODUCT (empty -> 1; deliberate ts asymmetry with SUM: non-array -> NULL
+and a NULL/non-numeric element NULLs the whole result), SQRT (negative ->
+NaN, not an error), CLAMP (exactly max(min, min(max, value)) — min WINS
+when min > max; NaN propagates like JS, pinned against rust's
+NaN-swallowing f64::min/max), FORMAT-FIXED (JS toFixed: half-AWAY-from-
+zero ties, pinned against rust's ties-to-even; digits outside 0..=100 and
+non-numeric num ERROR like ts; >=1e21 exponential quirk not reproduced),
+AM/PM (Time and DateTime adjust; everything else passes through
+UNCHANGED, not NULL), DAYS-BETWEEN (pure rename of classic SUBTRACT-DATES
+— same operand order, same date1-date2 sign; classic name dropped, the
+LAST scheduled classic drop), YEAR / MONTH (1-based, confirmed both
+sides) / DAY-OF-WEEK (ISO 1=Mon..7=Sun via number_from_monday; Date or
+DateTime, strings -> NULL), USE-MODULES (entries 'name' or
+['name' 'prefix']; [.prefixed TRUE] self-prefixes plain names; explicit
+pair prefix ALWAYS beats the option; imports into app module + live
+module_stack clone via new InterpreterContext::use_module; unknown name
+-> UnknownModule).
+
+Verify items resolved: NOW already matched ts #29 (DateTime carries the
+interpreter tz; rs-only nuance: unparseable tz name falls back to UTC
+where ts throws — documented). >DATE had four #35 gaps, all closed: trim;
+ISO datetimes without zone and with explicit numeric OFFSET take the date
+AS WRITTEN; trailing-Z instants resolve in the INTERPRETER timezone;
+month-name forms ("Oct 21, 2020") parse. ts's arbitrary new Date()
+leniency beyond that (e.g. bare "20240115") is NOT reproduced —
+sanctioned strict-parsing divergence. `0 >DATE` stays NULL (deliberate ts
+falsy asymmetry with `0 >DATETIME` = epoch). Also fixed:
+number_to_value now collapses to Int only within the f64-exact range
+(2^53) — beyond that `as i64` silently saturated.
 
 ## Present-but-verify list
 
 TAKE (rs lacks with_key), OR/AND (verify rs rejects arrays), >BOOL edge
 cases, SLICE allocation bound (#34), MEAN input breadth, @ unknown-variable
-error parity.
+error parity. NEW (Batch 5 spec sweep): rs >DATETIME / AT /
+TIMESTAMP>DATETIME hardcode UTC where ts resolves in the interpreter
+timezone (context_tz helper is right there — cheap fix, unscheduled).

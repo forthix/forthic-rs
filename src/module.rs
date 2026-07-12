@@ -109,6 +109,19 @@ pub trait InterpreterContext {
     fn find_variable_value(&self, _name: &str) -> Option<ForthicValue> {
         None
     }
+
+    /// Import a registered module's exportable words into the app module
+    /// under `prefix` ("" imports bare names; "m" imports `m.WORD`
+    /// delegates). Used by USE-MODULES; errors with UnknownModule for an
+    /// unregistered name. Defaults to unsupported for simple contexts.
+    fn use_module(&mut self, name: &str, _prefix: &str) -> Result<(), ForthicError> {
+        Err(ForthicError::UnknownModule {
+            forthic: String::new(),
+            module_name: name.to_string(),
+            location: None,
+            cause: None,
+        })
+    }
 }
 
 /// Word error handler trait - handles errors during word execution
