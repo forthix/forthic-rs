@@ -182,10 +182,12 @@ Fixed to the ts contract:
 - >DATETIME / AT / TIMESTAMP>DATETIME resolve in the INTERPRETER timezone
   (were UTC-hardcoded). >DATETIME also gained Float epoch seconds, a Date
   arm (midnight in tz), and %H:%M / fractional / date-only string forms.
-  Sanctioned divergence: rs reads trailing-Z and explicit-offset strings
-  as the INSTANTS they denote resolved into the interpreter tz — ts nulls
-  Z-strings and silently reinterprets offset wall-clocks (Temporal
-  accidents inconsistent with ts's own >DATE #35 rule).
+  Trailing-Z and explicit-offset strings read as the INSTANTS they
+  denote, resolved into the interpreter tz. (Formerly a sanctioned
+  divergence — ts nulled Z-strings and reinterpreted offset wall-clocks,
+  Temporal accidents inconsistent with its own >DATE #35 rule. Retired
+  2026-07-12: forthic-ts #42 aligned ts, so all three runtimes now agree;
+  forthic-py shipped the same contract in its Phase 5.)
 - OR/AND are strictly two-operand; an array operand errors toward
   ANY? / ALL? (the old rs array-collapse form silently changed arity).
   Two-value results stay truthiness-coerced Bool (ts's raw-operand return

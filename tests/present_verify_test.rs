@@ -107,9 +107,9 @@ fn test_to_datetime_strings_are_wall_clocks_in_interpreter_tz() {
 
 #[test]
 fn test_to_datetime_zoned_strings_are_instants() {
-    // Sanctioned divergence: ts nulls Z-strings and reinterprets offset
-    // wall-clocks; rs reads both as the instants they denote, resolved
-    // into the interpreter tz (consistent with >DATE's #35 rule)
+    // Cross-runtime contract (since forthic-ts #42): zone-carrying
+    // strings are the instants they denote, resolved into the
+    // interpreter tz (consistent with >DATE's #35 rule)
     let result = run_tz("Asia/Tokyo", "'2024-01-15T23:30:00Z' >DATETIME");
     let (y, m, d, hh, _, tz) = datetime_parts(&result);
     assert_eq!(
