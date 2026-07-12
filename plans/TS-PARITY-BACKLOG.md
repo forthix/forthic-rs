@@ -196,11 +196,14 @@ mirrors in the same pass — the plain-time extension (ts #36) is the model.
     sourced from the ts @ForthicWord docstrings with rs-specific text at
     every sanctioned divergence. (c-partial) first consumer:
     `cargo run --example generate_docs` renders docs/WORDS.md and lists
-    undocumented words so gaps stay visible. STILL OPEN: (b) the
-    #[forthic_word] proc-macro crate (pure ergonomics now — the data
-    model no longer depends on it); (c-rest) getModuleInfo over the
-    wire, REPL WORDS/HELP under the cli feature, a module-level
-    registerModuleDoc equivalent.
+    undocumented words so gaps stay visible. Also done: the undocumented
+    register_words! arm is REMOVED (docs are compile-enforced for
+    macro-registered words), and jsonrpc getModuleInfo serves real
+    WordDoc metadata instead of "( -- )" placeholders (+
+    Servicer::add_runtime_module). STILL OPEN: (b) the #[forthic_word]
+    proc-macro crate (pure ergonomics now — the data model no longer
+    depends on it); (c-rest) REPL WORDS/HELP under the cli feature, a
+    module-level registerModuleDoc equivalent.
 
 23. **ts: align JQ/record semantics to the cross-runtime contract**
     (rs -> ts, like #21). Bucket 1 — silent-corruption bugs rs fixed by
