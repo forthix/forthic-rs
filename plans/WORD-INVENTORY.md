@@ -43,8 +43,11 @@ dropping them would remove functionality with no replacement.
 ## Never port
 
 |REC@ (removed ts #27, injection), push_error (removed ts #38 → outcomes/TRY),
-UNDEFINED (JS-specific), MAP interps option (parallel interpreters — rs is
-deliberately synchronous).
+UNDEFINED (DECIDED 2026-07-11: stays in ts as a documented JS-only
+host-interop word — serializes as null on the wire; rs never implements it,
+and UnknownWord is the honest non-portability signal; portable programs use
+NULL), MAP interps option (parallel interpreters — rs is deliberately
+synchronous).
 
 ## Porting batches (canonical words only)
 
@@ -77,11 +80,19 @@ KEY-OF/UNIQUE-BY/SORT-U dedupe; value_to_key_string for group-key
 coercion; fractional counts truncate. SORT's comparator option is a KEY
 FUNCTION (the ts docstring's "SWAP -" example is stale).
 
-**Batch 3 — records & JQ paths (rs record module is thinnest):**
-JQ@ (null on miss, [] iterates+flattens), JQ! (auto-creates, no []), JQ-DEL,
-MERGE (shallow, rec2 wins), PICK, OMIT, HAS-KEY?, DELETE (supersedes <DEL),
-REC>ENTRIES (sorted-by-key per current docstring — note tension with #33
-insertion order; current ts is the spec), ENTRIES>REC (alias, low priority).
+**Batch 3 — records & JQ paths: DONE (feat/word-batch3):**
+JQ@ (null on miss, [] iterates+flattens conditionally), JQ! (auto-creates
+by NEXT-segment kind, no [], pads arrays with NULL), JQ-DEL (silent no-ops,
+no []), MERGE (shallow, rec2 wins), PICK, OMIT (drop keys stringify — ts's
+=== Set bug fixed by design), HAS-KEY? (presence, not non-null), DELETE
+(copy-on-write; classic <DEL dropped — note it MUTATED in place), REC>ENTRIES
++ ENTRIES>REC (round-trip identity). Classic REC-DEFAULTS dropped for MERGE
+(migration note: REC-DEFAULTS also overrode NULL/"" values). Documented
+divergences: records iterate/index/enumerate in INSERTION order everywhere
+(ts sorts as a JS-object-order workaround — including REC>ENTRIES); strict
+integer parse in [n] (no parseInt leniency). Also this batch: the
+register_words! macro (backlog item 22 Tier 1) replacing all registration
+tables.
 
 **Batch 4 — strings & interpolation:**
 INTERPOLATE (string version: {.var}@ holes), STR-LENGTH, SUBSTR, SPLICE,

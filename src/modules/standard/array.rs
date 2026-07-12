@@ -17,7 +17,7 @@
 
 use crate::errors::ForthicError;
 use crate::literals::ForthicValue;
-use crate::module::{InterpreterContext, Module, ModuleWord};
+use crate::module::{register_words, InterpreterContext, Module, ModuleWord};
 use indexmap::IndexMap;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -646,46 +646,34 @@ impl ArrayModule {
     // ===== Higher-Order Words (Batch 2 — run Forthic per element) =====
 
     fn register_higher_order_words(module: &mut Module) {
-        for (name, handler) in [
-            (
-                "FILTER",
-                Self::word_filter as fn(&mut dyn InterpreterContext) -> Result<(), ForthicError>,
-            ),
-            ("FOREACH", Self::word_foreach),
-            ("REDUCE", Self::word_reduce),
-            ("FIND", Self::word_find),
-            ("COUNT", Self::word_count),
-            ("SORT", Self::word_sort),
-            ("SORT-BY", Self::word_sort_by),
-            ("MIN-BY", Self::word_min_by),
-            ("MAX-BY", Self::word_max_by),
-            ("UNIQUE-BY", Self::word_unique_by),
-            ("TIMES-RUN", Self::word_times_run),
-            ("ZIP-WITH", Self::word_zip_with),
-            ("MAP-AT", Self::word_map_at),
-        ] {
-            let word = Arc::new(ModuleWord::new(name.to_string(), handler));
-            module.add_exportable_word(word);
-        }
+        register_words!(module, {
+            "FILTER" => Self::word_filter,
+            "FOREACH" => Self::word_foreach,
+            "REDUCE" => Self::word_reduce,
+            "FIND" => Self::word_find,
+            "COUNT" => Self::word_count,
+            "SORT" => Self::word_sort,
+            "SORT-BY" => Self::word_sort_by,
+            "MIN-BY" => Self::word_min_by,
+            "MAX-BY" => Self::word_max_by,
+            "UNIQUE-BY" => Self::word_unique_by,
+            "TIMES-RUN" => Self::word_times_run,
+            "ZIP-WITH" => Self::word_zip_with,
+            "MAP-AT" => Self::word_map_at,
+        });
     }
 
     fn register_query_words(module: &mut Module) {
-        for (name, handler) in [
-            (
-                "SORT-U",
-                Self::word_sort_u as fn(&mut dyn InterpreterContext) -> Result<(), ForthicError>,
-            ),
-            ("GROUP-BY", Self::word_group_by),
-            ("GROUP-BY-FIELD", Self::word_group_by_field),
-            ("BY-FIELD", Self::word_by_field),
-            ("GROUPS-OF", Self::word_groups_of),
-            ("INDEX", Self::word_index),
-            ("KEY-OF", Self::word_key_of),
-            ("NUMBERED", Self::word_numbered),
-        ] {
-            let word = Arc::new(ModuleWord::new(name.to_string(), handler));
-            module.add_exportable_word(word);
-        }
+        register_words!(module, {
+            "SORT-U" => Self::word_sort_u,
+            "GROUP-BY" => Self::word_group_by,
+            "GROUP-BY-FIELD" => Self::word_group_by_field,
+            "BY-FIELD" => Self::word_by_field,
+            "GROUPS-OF" => Self::word_groups_of,
+            "INDEX" => Self::word_index,
+            "KEY-OF" => Self::word_key_of,
+            "NUMBERED" => Self::word_numbered,
+        });
     }
 
     /// Push item (and optionally its key/index beneath it), run the code,
@@ -1210,8 +1198,10 @@ impl ArrayModule {
         Ok(())
     }
 
-    /// Field access for the -FIELD group words: a NULL element errors
-    /// (faithful to ts, where null[field] throws); a missing field is NULL
+    /// Field access for the -FIELD group words: a NULL element errors and a
+    /// missing field is NULL, grouping under "null" — the cross-runtime
+    /// contract (ts aligned to it in forthic-ts #39; "undefined" is not a
+    /// Forthic spelling)
     fn field_of(
         item: &ForthicValue,
         field: &str,

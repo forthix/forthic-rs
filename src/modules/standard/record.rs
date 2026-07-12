@@ -7,9 +7,10 @@
 // - Transform: RELABEL, INVERT-KEYS, REC-DEFAULTS, <DEL
 // - Access: KEYS, VALUES
 
+use super::jq_path::{jq_del, jq_get, jq_set, parse_jq_path};
 use crate::errors::ForthicError;
 use crate::literals::ForthicValue;
-use crate::module::{InterpreterContext, Module, ModuleWord};
+use crate::module::{register_words, InterpreterContext, Module, ModuleWord};
 use indexmap::IndexMap;
 use std::sync::Arc;
 
@@ -25,6 +26,7 @@ impl RecordModule {
 
         // Register all words
         Self::register_core_words(&mut module);
+        Self::register_batch3_words(&mut module);
         Self::register_transform_words(&mut module);
         Self::register_access_words(&mut module);
 
@@ -42,6 +44,258 @@ impl RecordModule {
     }
 
     // ===== Core Operations =====
+
+    fn register_batch3_words(module: &mut Module) {
+        register_words!(module, {
+            "JQ@" => Self::word_jq_at,
+            "JQ!" => Self::word_jq_set,
+            "JQ-DEL" => Self::word_jq_del,
+            "MERGE" => Self::word_merge,
+            "PICK" => Self::word_pick,
+            "OMIT" => Self::word_omit,
+            "HAS-KEY?" => Self::word_has_key_q,
+            "DELETE" => Self::word_delete,
+            "REC>ENTRIES" => Self::word_rec_to_entries,
+            "ENTRIES>REC" => Self::word_entries_to_rec,
+        });
+    }
+
+    /// Coerce a value to a record key string (JS property-key semantics)
+    fn key_string(v: &ForthicValue) -> String {
+        match v {
+            ForthicValue::String(s) => s.clone(),
+            ForthicValue::Int(i) => i.to_string(),
+            ForthicValue::Float(f) => f.to_string(),
+            ForthicValue::Bool(b) => b.to_string(),
+            ForthicValue::Null => "null".to_string(),
+            other => format!("{other:?}"),
+        }
+    }
+
+    /// JQ@: ( container path -- value ) — jq-style get; any miss is NULL.
+    /// Paths: 'a.b[0]' strings, dynamic [ 'a' 0 ] arrays, and the []
+    /// iterate segment (JQ@ only) with conditional flattening. Records
+    /// iterate/index in insertion order (ts sorts — documented divergence).
+    fn word_jq_at(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let path = context.stack_pop()?;
+        let container = context.stack_pop()?;
+        let segments = parse_jq_path(&path)?;
+        context.stack_push(jq_get(&container, &segments));
+        Ok(())
+    }
+
+    /// JQ!: ( container value path -- container ) — jq-style set with
+    /// auto-created intermediates (kind decided by the NEXT segment). No []
+    /// iteration. Empty path replaces the whole container; a NULL/scalar
+    /// container is replaced by the kind the first segment needs.
+    fn word_jq_set(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let path = context.stack_pop()?;
+        let value = context.stack_pop()?;
+        let mut container = context.stack_pop()?;
+        let segments = parse_jq_path(&path)?;
+
+        if segments.is_empty() {
+            context.stack_push(value);
+            return Ok(());
+        }
+        if !matches!(container, ForthicValue::Array(_) | ForthicValue::Record(_)) {
+            container = super::jq_path::new_container_for(segments.first());
+        }
+        jq_set(&mut container, &segments, value)?;
+        context.stack_push(container);
+        Ok(())
+    }
+
+    /// JQ-DEL: ( container path -- container ) — jq-style delete; missing
+    /// paths are silent no-ops; no [] iteration; array deletes shift left
+    fn word_jq_del(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let path = context.stack_pop()?;
+        let mut container = context.stack_pop()?;
+        let segments = parse_jq_path(&path)?;
+        if !segments.is_empty() && !matches!(container, ForthicValue::Null) {
+            jq_del(&mut container, &segments)?;
+        }
+        context.stack_push(container);
+        Ok(())
+    }
+
+    /// MERGE: ( rec1 rec2 -- merged ) — shallow; rec2 wins; non-records
+    /// coerce to empty. New record; shared keys keep rec1's position.
+    fn word_merge(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let rec2 = context.stack_pop()?;
+        let rec1 = context.stack_pop()?;
+        let mut merged = match rec1 {
+            ForthicValue::Record(r) => r,
+            _ => IndexMap::new(),
+        };
+        if let ForthicValue::Record(r2) = rec2 {
+            for (k, v) in r2 {
+                merged.insert(k, v);
+            }
+        }
+        context.stack_push(ForthicValue::Record(merged));
+        Ok(())
+    }
+
+    /// PICK: ( rec keys -- rec ) — keep only the named keys; missing keys
+    /// silently skipped; output order follows the keys list
+    fn word_pick(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let keys = context.stack_pop()?;
+        let rec = context.stack_pop()?;
+        let mut out = IndexMap::new();
+        if let (ForthicValue::Record(rec), ForthicValue::Array(keys)) = (&rec, &keys) {
+            for key_val in keys {
+                let key = Self::key_string(key_val);
+                if let Some(v) = rec.get(&key) {
+                    out.insert(key, v.clone());
+                }
+            }
+        }
+        context.stack_push(ForthicValue::Record(out));
+        Ok(())
+    }
+
+    /// OMIT: ( rec keys -- rec ) — drop the named keys, record order
+    /// preserved. Drop keys stringify, so [ 1 ] OMIT matches key "1"
+    /// (ts's === Set misses that — fixed by design here).
+    fn word_omit(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let keys = context.stack_pop()?;
+        let rec = context.stack_pop()?;
+        let drop: Vec<String> = match &keys {
+            ForthicValue::Array(keys) => keys.iter().map(Self::key_string).collect(),
+            _ => Vec::new(),
+        };
+        let mut out = IndexMap::new();
+        if let ForthicValue::Record(rec) = &rec {
+            for (k, v) in rec {
+                if !drop.contains(k) {
+                    out.insert(k.clone(), v.clone());
+                }
+            }
+        }
+        context.stack_push(ForthicValue::Record(out));
+        Ok(())
+    }
+
+    /// HAS-KEY?: ( rec key -- bool ) — key PRESENCE, not value-non-null:
+    /// a key explicitly set to NULL is present (distinct from REC@ NULL ==)
+    fn word_has_key_q(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let key = context.stack_pop()?;
+        let rec = context.stack_pop()?;
+        let present =
+            matches!(&rec, ForthicValue::Record(rec) if rec.contains_key(&Self::key_string(&key)));
+        context.stack_push(ForthicValue::Bool(present));
+        Ok(())
+    }
+
+    /// DELETE: ( container key -- container ) — copy-on-write delete
+    /// (ts #32): the input is never mutated. Arrays require integer keys
+    /// (negative wraps once; out-of-range is a no-op); record keys coerce
+    /// to strings; missing keys are no-ops. Replaces the classic <DEL,
+    /// which mutated in place.
+    fn word_delete(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let key = context.stack_pop()?;
+        let container = context.stack_pop()?;
+        let result = match container {
+            ForthicValue::Record(rec) => {
+                let mut copy = rec.clone();
+                // shift_remove preserves the order of remaining entries
+                copy.shift_remove(&Self::key_string(&key));
+                ForthicValue::Record(copy)
+            }
+            ForthicValue::Array(arr) => {
+                let idx = match &key {
+                    ForthicValue::Int(i) => Some(*i),
+                    ForthicValue::Float(f) if f.fract() == 0.0 => Some(*f as i64),
+                    _ => {
+                        return Err(ForthicError::InvalidOperation {
+                            forthic: String::new(),
+                            message: format!(
+                                "DELETE on an array requires an integer index, got {key:?}"
+                            ),
+                            location: None,
+                            cause: None,
+                        })
+                    }
+                };
+                let mut copy = arr.clone();
+                if let Some(n) = idx {
+                    let norm = if n < 0 { n + copy.len() as i64 } else { n };
+                    if norm >= 0 && (norm as usize) < copy.len() {
+                        copy.remove(norm as usize);
+                    }
+                }
+                ForthicValue::Array(copy)
+            }
+            other => other, // NULL/scalar: unchanged
+        };
+        context.stack_push(result);
+        Ok(())
+    }
+
+    /// REC>ENTRIES: ( rec -- pairs ) — [k v] pairs in INSERTION order.
+    /// ts sorts by key (a stability workaround for JS object-order quirks
+    /// that IndexMap doesn't need) — documented divergence; this makes
+    /// REC>ENTRIES ENTRIES>REC a true round-trip identity.
+    fn word_rec_to_entries(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let rec = context.stack_pop()?;
+        let pairs = match rec {
+            ForthicValue::Record(rec) => rec
+                .into_iter()
+                .map(|(k, v)| ForthicValue::Array(vec![ForthicValue::String(k), v]))
+                .collect(),
+            _ => Vec::new(),
+        };
+        context.stack_push(ForthicValue::Array(pairs));
+        Ok(())
+    }
+
+    /// ENTRIES>REC: ( pairs -- rec ) — the inverse of REC>ENTRIES; same
+    /// contract as REC (strict [key value] pair validation; later
+    /// duplicates win, keeping the first insertion position)
+    fn word_entries_to_rec(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let pairs = context.stack_pop()?;
+        let rec = Self::build_record(&pairs, "ENTRIES>REC")?;
+        context.stack_push(ForthicValue::Record(rec));
+        Ok(())
+    }
+
+    /// Build a record from [[k v] ...] pairs with strict validation
+    /// (shared by REC-family words)
+    fn build_record(
+        pairs: &ForthicValue,
+        word_name: &str,
+    ) -> Result<IndexMap<String, ForthicValue>, ForthicError> {
+        let mut rec = IndexMap::new();
+        let ForthicValue::Array(pairs) = pairs else {
+            return Ok(rec); // NULL -> empty record
+        };
+        for (i, pair) in pairs.iter().enumerate() {
+            let ForthicValue::Array(kv) = pair else {
+                return Err(ForthicError::InvalidOperation {
+                    forthic: String::new(),
+                    message: format!(
+                        "{word_name} requires each pair to be a [key, value] array; pair at index {i} is {pair:?}"
+                    ),
+                    location: None,
+                    cause: None,
+                });
+            };
+            if kv.len() != 2 {
+                return Err(ForthicError::InvalidOperation {
+                    forthic: String::new(),
+                    message: format!(
+                        "{word_name} requires each pair to be a [key, value] array with exactly 2 elements; pair at index {i} has {}",
+                        kv.len()
+                    ),
+                    location: None,
+                    cause: None,
+                });
+            }
+            rec.insert(Self::key_string(&kv[0]), kv[1].clone());
+        }
+        Ok(rec)
+    }
 
     fn register_core_words(module: &mut Module) {
         // REC
@@ -199,17 +453,6 @@ impl RecordModule {
             Self::word_invert_keys,
         ));
         module.add_exportable_word(word);
-
-        // REC-DEFAULTS
-        let word = Arc::new(ModuleWord::new(
-            "REC-DEFAULTS".to_string(),
-            Self::word_rec_defaults,
-        ));
-        module.add_exportable_word(word);
-
-        // <DEL
-        let word = Arc::new(ModuleWord::new("<DEL".to_string(), Self::word_del));
-        module.add_exportable_word(word);
     }
 
     fn word_relabel(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
@@ -281,73 +524,6 @@ impl RecordModule {
                 ForthicValue::Record(result_rec)
             }
             _ => record,
-        };
-
-        context.stack_push(result);
-        Ok(())
-    }
-
-    fn word_rec_defaults(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
-        let key_vals = context.stack_pop()?;
-        let record = context.stack_pop()?;
-
-        let mut rec = match record {
-            ForthicValue::Record(r) => r,
-            _ => {
-                context.stack_push(record);
-                return Ok(());
-            }
-        };
-
-        if let ForthicValue::Array(pairs) = key_vals {
-            for pair in pairs {
-                if let ForthicValue::Array(kv) = pair {
-                    if kv.len() >= 2 {
-                        if let ForthicValue::String(key) = &kv[0] {
-                            let current = rec.get(key);
-                            let should_set = match current {
-                                None => true,
-                                Some(ForthicValue::Null) => true,
-                                Some(ForthicValue::String(s)) if s.is_empty() => true,
-                                _ => false,
-                            };
-
-                            if should_set {
-                                rec.insert(key.clone(), kv[1].clone());
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        context.stack_push(ForthicValue::Record(rec));
-        Ok(())
-    }
-
-    fn word_del(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
-        let key = context.stack_pop()?;
-        let container = context.stack_pop()?;
-
-        let result = match container {
-            ForthicValue::Record(mut rec) => {
-                if let ForthicValue::String(k) = key {
-                    // shift_remove preserves the order of remaining entries
-                    // (IndexMap's plain remove is a swap_remove, which would
-                    // silently break the insertion-order contract)
-                    rec.shift_remove(&k);
-                }
-                ForthicValue::Record(rec)
-            }
-            ForthicValue::Array(mut arr) => {
-                if let ForthicValue::Int(idx) = key {
-                    if idx >= 0 && (idx as usize) < arr.len() {
-                        arr.remove(idx as usize);
-                    }
-                }
-                ForthicValue::Array(arr)
-            }
-            _ => container,
         };
 
         context.stack_push(result);

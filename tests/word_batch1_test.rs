@@ -100,7 +100,7 @@ fn test_empty_q() {
     assert_eq!(run("NULL EMPTY?"), b(true));
     assert_eq!(run("'' EMPTY?"), b(true));
     assert_eq!(run("[ ] EMPTY?"), b(true));
-    assert_eq!(run("[ [ 'a' 1 ] ] REC 'a' <DEL EMPTY?"), b(true));
+    assert_eq!(run("[ [ 'a' 1 ] ] REC 'a' DELETE EMPTY?"), b(true));
     assert_eq!(run("'x' EMPTY?"), b(false));
     assert_eq!(run("[ 1 ] EMPTY?"), b(false));
     assert_eq!(run("0 EMPTY?"), b(false));

@@ -15,7 +15,7 @@
 
 use crate::errors::ForthicError;
 use crate::literals::ForthicValue;
-use crate::module::{InterpreterContext, Module, ModuleWord};
+use crate::module::{register_words, InterpreterContext, Module, ModuleWord};
 use crate::word_options::WordOptions;
 use indexmap::IndexMap;
 use std::sync::Arc;
@@ -244,10 +244,10 @@ impl CoreModule {
     // ===== Debug =====
 
     fn register_debug_words(module: &mut Module) {
-        let word = Arc::new(ModuleWord::new("PEEK!".to_string(), Self::word_peek_bang));
-        module.add_exportable_word(word);
-        let word = Arc::new(ModuleWord::new("STACK!".to_string(), Self::word_stack_bang));
-        module.add_exportable_word(word);
+        register_words!(module, {
+            "PEEK!" => Self::word_peek_bang,
+            "STACK!" => Self::word_stack_bang,
+        });
     }
 
     /// PEEK!: print top of stack and intentionally stop execution
@@ -284,23 +284,13 @@ impl CoreModule {
     // ===== Error Handling (Rust Result semantics; see backlog item 20) =====
 
     fn register_error_words(module: &mut Module) {
-        let word = Arc::new(ModuleWord::new("TRY".to_string(), Self::word_try));
-        module.add_exportable_word(word);
-
-        let word = Arc::new(ModuleWord::new("OK?".to_string(), Self::word_ok_q));
-        module.add_exportable_word(word);
-
-        let word = Arc::new(ModuleWord::new("ERROR?".to_string(), Self::word_error_q));
-        module.add_exportable_word(word);
-
-        let word = Arc::new(ModuleWord::new("UNWRAP".to_string(), Self::word_unwrap));
-        module.add_exportable_word(word);
-
-        let word = Arc::new(ModuleWord::new(
-            "UNWRAP-OR".to_string(),
-            Self::word_unwrap_or,
-        ));
-        module.add_exportable_word(word);
+        register_words!(module, {
+            "TRY" => Self::word_try,
+            "OK?" => Self::word_ok_q,
+            "ERROR?" => Self::word_error_q,
+            "UNWRAP" => Self::word_unwrap,
+            "UNWRAP-OR" => Self::word_unwrap_or,
+        });
     }
 
     /// TRY: ( forthic -- outcome )

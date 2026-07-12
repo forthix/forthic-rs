@@ -155,10 +155,10 @@ fn test_slice_span_guard() {
 }
 
 #[test]
-fn test_del_preserves_order_of_remaining_entries() {
+fn test_delete_preserves_order_of_remaining_entries() {
     // IndexMap's plain remove() is a swap_remove — deleting 'z' would move
-    // 'm' to the front. shift_remove keeps a, m in order.
-    let rest = run(&format!("{ZAM} 'z' <DEL"));
+    // 'm' to the front. DELETE's copy-on-write path uses shift_remove.
+    let rest = run(&format!("{ZAM} 'z' DELETE"));
     assert_eq!(record_keys(&rest), vec!["a", "m"]);
 }
 
