@@ -14,6 +14,7 @@ pub mod array;
 pub mod boolean;
 pub mod core;
 pub mod datetime;
+pub(crate) mod jq_path;
 pub mod json;
 pub mod math;
 pub mod record;

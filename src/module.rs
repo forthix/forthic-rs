@@ -31,6 +31,27 @@ use std::sync::{Arc, Mutex};
 
 // Forward declaration - Interpreter will be defined in interpreter.rs
 // We use a trait to avoid circular dependencies
+/// Registration sugar: expands to one Arc<ModuleWord> + add_exportable_word
+/// per entry. Each expansion is its own expression, so no fn-pointer cast is
+/// needed to unify handler types (the annoyance of tuple-array loops).
+///
+/// ```ignore
+/// register_words!(module, {
+///     "FILTER"  => Self::word_filter,
+///     "FOREACH" => Self::word_foreach,
+/// });
+/// ```
+macro_rules! register_words {
+    ($module:expr, { $( $name:literal => $handler:expr ),+ $(,)? }) => {
+        $(
+            $module.add_exportable_word(std::sync::Arc::new(
+                $crate::module::ModuleWord::new($name.to_string(), $handler),
+            ));
+        )+
+    };
+}
+pub(crate) use register_words;
+
 pub trait InterpreterContext {
     fn stack_push(&mut self, value: ForthicValue);
     fn stack_pop(&mut self) -> Result<ForthicValue, ForthicError>;

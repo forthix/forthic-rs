@@ -238,72 +238,22 @@ fn test_invert_keys() {
 }
 
 #[test]
-fn test_rec_defaults() {
+fn test_classic_rec_defaults_is_gone() {
+    // Classic REC-DEFAULTS dropped in favor of MERGE (defaults input MERGE).
+    // Migration note: REC-DEFAULTS also overrode explicit NULL/"" values,
+    // which MERGE keeps — filter those first if that behavior is needed.
     let module = RecordModule::new();
-    let mut ctx = MockContext::new();
-
-    let mut rec = IndexMap::new();
-    rec.insert(
-        "name".to_string(),
-        ForthicValue::String("Alice".to_string()),
-    );
-    rec.insert("age".to_string(), ForthicValue::Null);
-
-    let word = module.module().find_word("REC-DEFAULTS").unwrap();
-    ctx.stack.push(ForthicValue::Record(rec));
-    ctx.stack.push(ForthicValue::Array(vec![
-        ForthicValue::Array(vec![
-            ForthicValue::String("age".to_string()),
-            ForthicValue::Int(25),
-        ]),
-        ForthicValue::Array(vec![
-            ForthicValue::String("city".to_string()),
-            ForthicValue::String("NYC".to_string()),
-        ]),
-    ]));
-    word.execute(&mut ctx).unwrap();
-
-    let result = ctx.stack.pop().unwrap();
-    if let ForthicValue::Record(rec) = result {
-        assert_eq!(rec.get("age"), Some(&ForthicValue::Int(25))); // Was null, so replaced
-        assert_eq!(
-            rec.get("city"),
-            Some(&ForthicValue::String("NYC".to_string()))
-        ); // Was missing, so added
-        assert_eq!(
-            rec.get("name"),
-            Some(&ForthicValue::String("Alice".to_string()))
-        ); // Unchanged
-    } else {
-        panic!("Expected record");
-    }
+    assert!(module.module().find_word("REC-DEFAULTS").is_none());
+    assert!(module.module().find_word("MERGE").is_some());
 }
 
 #[test]
-fn test_del() {
+fn test_classic_del_is_gone() {
+    // Classic <DEL dropped when DELETE landed (Batch 3 schedule). Note the
+    // semantic upgrade: <DEL mutated in place; DELETE is copy-on-write.
     let module = RecordModule::new();
-    let mut ctx = MockContext::new();
-
-    let mut rec = IndexMap::new();
-    rec.insert(
-        "name".to_string(),
-        ForthicValue::String("Alice".to_string()),
-    );
-    rec.insert("age".to_string(), ForthicValue::Int(30));
-
-    let word = module.module().find_word("<DEL").unwrap();
-    ctx.stack.push(ForthicValue::Record(rec));
-    ctx.stack.push(ForthicValue::String("age".to_string()));
-    word.execute(&mut ctx).unwrap();
-
-    let result = ctx.stack.pop().unwrap();
-    if let ForthicValue::Record(rec) = result {
-        assert_eq!(rec.len(), 1);
-        assert!(rec.contains_key("name"));
-        assert!(!rec.contains_key("age"));
-    } else {
-        panic!("Expected record");
-    }
+    assert!(module.module().find_word("<DEL").is_none());
+    assert!(module.module().find_word("DELETE").is_some());
 }
 
 // Access Tests
