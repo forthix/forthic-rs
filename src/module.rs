@@ -35,28 +35,23 @@ use std::sync::{Arc, Mutex};
 /// per entry. Each expansion is its own expression, so no fn-pointer cast is
 /// needed to unify handler types (the annoyance of tuple-array loops).
 ///
+/// Every entry carries its documentation (backlog item 22) — there is
+/// deliberately no undocumented form, so a new word can't compile without
+/// a stack effect and description. Entries are semicolon-separated because
+/// the doc fields use commas:
+///
 /// ```ignore
 /// register_words!(module, {
-///     "FILTER"  => Self::word_filter,
-///     "FOREACH" => Self::word_foreach,
+///     "FILTER" => Self::word_filter,
+///         "( items:any[] forthic:string -- filtered:any[] )",
+///         "Keep elements where forthic yields a truthy value";
 /// });
 /// ```
 macro_rules! register_words {
-    // Documented form (backlog item 22 Tier 2) — entries are
-    // `"NAME" => handler, "( stack -- effect )", "description";`
-    // (semicolon-separated because the doc fields use commas)
     ($module:expr, { $( $name:literal => $handler:expr, $effect:literal, $desc:literal );+ $(;)? }) => {
         $(
             $module.add_exportable_word(std::sync::Arc::new(
                 $crate::module::ModuleWord::with_doc($name.to_string(), $handler, $effect, $desc),
-            ));
-        )+
-    };
-    // Bare form — kept for words not yet documented
-    ($module:expr, { $( $name:literal => $handler:expr ),+ $(,)? }) => {
-        $(
-            $module.add_exportable_word(std::sync::Arc::new(
-                $crate::module::ModuleWord::new($name.to_string(), $handler),
             ));
         )+
     };
