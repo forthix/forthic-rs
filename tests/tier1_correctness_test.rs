@@ -114,8 +114,8 @@ fn test_datetime_equality_requires_same_timezone() {
 
 #[test]
 fn test_temporal_membership_works() {
-    // values_equal also feeds IN/ANY/ALL
-    assert_eq!(run("TODAY [ TODAY ] IN"), ForthicValue::Bool(true));
+    // values_equal also feeds CONTAINS?/ANY/ALL
+    assert_eq!(run("[ TODAY ] TODAY CONTAINS?"), ForthicValue::Bool(true));
 }
 
 #[test]
