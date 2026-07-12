@@ -187,17 +187,20 @@ mirrors in the same pass — the plain-time extension (ts #36) is the model.
     Direction is rs -> ts: the rs Batch 2 implementation defined the
     host-neutral contract; ts is the nonconforming side. After the ts fix,
     soften rs field_of's "faithful to ts" comment to cite the contract.
-22. **Word metadata as data (Tier-2 registration design).** rs words carry
-    no stack effects or descriptions — getModuleInfo emits "( -- )"
-    placeholders. Decomposed: (a) WordDoc storage in module.rs (Word trait
-    doc() accessor, Module::word_docs, module-level description — ts
-    getWordDocs/registerModuleDoc equivalents; standalone value, no macro
-    needed); (b) #[forthic_word] proc-macro attribute in a forthic-macros
-    crate for ergonomic capture (the ts @ForthicWord decorator analog);
-    (c) consumers: getModuleInfo reads real docs (dormant until runtime
-    modules exist), REPL WORDS/HELP under the cli feature, generated/LLM
-    docs. A cheap register_words! macro_rules (registration sugar only, no
-    metadata) can land anytime.
+22. **Word metadata as data (Tier-2 registration design).**
+    DONE through Tier 2 (feat/word-metadata): (a) WordDoc storage —
+    WordDoc {stack_effect, description} on ModuleWord, Word::doc()
+    (default None), Module::word_docs(); register_words! gained a
+    documented arm (`"NAME" => handler, "( effect )", "desc";` —
+    semicolon-separated entries). All 177 standard words documented,
+    sourced from the ts @ForthicWord docstrings with rs-specific text at
+    every sanctioned divergence. (c-partial) first consumer:
+    `cargo run --example generate_docs` renders docs/WORDS.md and lists
+    undocumented words so gaps stay visible. STILL OPEN: (b) the
+    #[forthic_word] proc-macro crate (pure ergonomics now — the data
+    model no longer depends on it); (c-rest) getModuleInfo over the
+    wire, REPL WORDS/HELP under the cli feature, a module-level
+    registerModuleDoc equivalent.
 
 23. **ts: align JQ/record semantics to the cross-runtime contract**
     (rs -> ts, like #21). Bucket 1 — silent-corruption bugs rs fixed by

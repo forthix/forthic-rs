@@ -8,10 +8,9 @@
 
 use crate::errors::ForthicError;
 use crate::literals::ForthicValue;
-use crate::module::{InterpreterContext, Module, ModuleWord};
+use crate::module::{register_words, InterpreterContext, Module};
 use indexmap::IndexMap;
 use serde_json::{json, Value as JsonValue};
-use std::sync::Arc;
 
 /// JSONModule provides JSON serialization operations
 pub struct JSONModule {
@@ -43,13 +42,14 @@ impl JSONModule {
     // ===== Conversion Operations =====
 
     fn register_conversion_words(module: &mut Module) {
-        // >JSON
-        let word = Arc::new(ModuleWord::new(">JSON".to_string(), Self::word_to_json));
-        module.add_exportable_word(word);
-
-        // JSON>
-        let word = Arc::new(ModuleWord::new("JSON>".to_string(), Self::word_from_json));
-        module.add_exportable_word(word);
+        register_words!(module, {
+            ">JSON" => Self::word_to_json,
+                "( object:any -- json:string )",
+                "Convert object to JSON string";
+            "JSON>" => Self::word_from_json,
+                "( json:string -- object:any )",
+                "Parse JSON string to object (null for empty or invalid input)";
+        });
     }
 
     fn word_to_json(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
@@ -86,12 +86,11 @@ impl JSONModule {
     // ===== Formatting Operations =====
 
     fn register_formatting_words(module: &mut Module) {
-        // JSON-PRETTIFY
-        let word = Arc::new(ModuleWord::new(
-            "JSON-PRETTIFY".to_string(),
-            Self::word_json_prettify,
-        ));
-        module.add_exportable_word(word);
+        register_words!(module, {
+            "JSON-PRETTIFY" => Self::word_json_prettify,
+                "( json:string -- pretty:string )",
+                "Reformat a JSON string with indentation (empty string for invalid input)";
+        });
     }
 
     fn word_json_prettify(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {

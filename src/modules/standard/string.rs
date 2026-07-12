@@ -11,9 +11,8 @@
 
 use crate::errors::ForthicError;
 use crate::literals::ForthicValue;
-use crate::module::{register_words, InterpreterContext, Module, ModuleWord};
+use crate::module::{register_words, InterpreterContext, Module};
 use regex::Regex;
-use std::sync::Arc;
 
 /// StringModule provides string manipulation operations
 pub struct StringModule {
@@ -51,23 +50,17 @@ impl StringModule {
     // ===== Conversion Operations =====
 
     fn register_conversion_words(module: &mut Module) {
-        // >STR
-        let word = Arc::new(ModuleWord::new(">STR".to_string(), Self::word_to_str));
-        module.add_exportable_word(word);
-
-        // URL-ENCODE
-        let word = Arc::new(ModuleWord::new(
-            "URL-ENCODE".to_string(),
-            Self::word_url_encode,
-        ));
-        module.add_exportable_word(word);
-
-        // URL-DECODE
-        let word = Arc::new(ModuleWord::new(
-            "URL-DECODE".to_string(),
-            Self::word_url_decode,
-        ));
-        module.add_exportable_word(word);
+        register_words!(module, {
+            ">STR" => Self::word_to_str,
+                "( item:any -- string:string )",
+                "Convert item to string. Records render as JSON; arrays comma-join their stringified elements.";
+            "URL-ENCODE" => Self::word_url_encode,
+                "( str:string -- encoded:string )",
+                "Percent-encode a string for use in URLs";
+            "URL-DECODE" => Self::word_url_decode,
+                "( str:string -- decoded:string )",
+                "Decode a percent-encoded URL string";
+        });
     }
 
     fn word_to_str(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
@@ -148,27 +141,20 @@ impl StringModule {
     // ===== Transform Operations =====
 
     fn register_transform_words(module: &mut Module) {
-        // LOWERCASE
-        let word = Arc::new(ModuleWord::new(
-            "LOWERCASE".to_string(),
-            Self::word_lowercase,
-        ));
-        module.add_exportable_word(word);
-
-        // UPPERCASE
-        let word = Arc::new(ModuleWord::new(
-            "UPPERCASE".to_string(),
-            Self::word_uppercase,
-        ));
-        module.add_exportable_word(word);
-
-        // STRIP
-        let word = Arc::new(ModuleWord::new("STRIP".to_string(), Self::word_strip));
-        module.add_exportable_word(word);
-
-        // ASCII
-        let word = Arc::new(ModuleWord::new("ASCII".to_string(), Self::word_ascii));
-        module.add_exportable_word(word);
+        register_words!(module, {
+            "LOWERCASE" => Self::word_lowercase,
+                "( string:string -- result:string )",
+                "Convert string to lowercase";
+            "UPPERCASE" => Self::word_uppercase,
+                "( string:string -- result:string )",
+                "Convert string to uppercase";
+            "STRIP" => Self::word_strip,
+                "( string:string -- result:string )",
+                "Trim whitespace from string";
+            "ASCII" => Self::word_ascii,
+                "( string:string -- result:string )",
+                "Keep only characters with code points below 256";
+        });
     }
 
     fn word_lowercase(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
@@ -225,17 +211,17 @@ impl StringModule {
     // ===== Split/Join Operations =====
 
     fn register_split_join_words(module: &mut Module) {
-        // SPLIT
-        let word = Arc::new(ModuleWord::new("SPLIT".to_string(), Self::word_split));
-        module.add_exportable_word(word);
-
-        // JOIN
-        let word = Arc::new(ModuleWord::new("JOIN".to_string(), Self::word_join));
-        module.add_exportable_word(word);
-
-        // CONCAT
-        let word = Arc::new(ModuleWord::new("CONCAT".to_string(), Self::word_concat));
-        module.add_exportable_word(word);
+        register_words!(module, {
+            "SPLIT" => Self::word_split,
+                "( string:string sep:string -- items:any[] )",
+                "Split string by separator";
+            "JOIN" => Self::word_join,
+                "( strings:string[] sep:string -- result:string )",
+                "Join strings with separator (non-string elements are skipped)";
+            "CONCAT" => Self::word_concat,
+                "( strings:string[] -- result:string )",
+                "Concatenate an array of strings into one string. For two strings: write [s1 s2] CONCAT. For arrays of arrays, use FLATTEN.";
+        });
     }
 
     fn word_split(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
@@ -316,14 +302,30 @@ impl StringModule {
     // ===== Substrings & Affixes =====
 
     fn register_substring_words(module: &mut Module) {
+        // Indices are CHAR (code point) indices — the sanctioned
+        // divergence from ts's UTF-16 units (item 18)
         register_words!(module, {
             "STR-LENGTH" => Self::word_str_length,
+                "( str:string -- length:number )",
+                "Length of a string in characters (code points; 0 if null)";
             "SUBSTR" => Self::word_substr,
+                "( str:string start:number end:number -- substring:string )",
+                "Substring of str from start (inclusive) to end (exclusive), by character (code point) index. Indices clamp like String.slice (negatives count from the end).";
             "SPLICE" => Self::word_splice,
+                "( str:string start:number end:number newval:string -- result:string )",
+                "Replace the substring [start, end) of str with newval and return the result (a splice); character (code point) indices";
             "STARTS-WITH?" => Self::word_starts_with_q,
+                "( str:string prefix:string -- bool:boolean )",
+                "Returns true if str begins with prefix";
             "ENDS-WITH?" => Self::word_ends_with_q,
+                "( str:string suffix:string -- bool:boolean )",
+                "Returns true if str ends with suffix";
             "TRIM-PREFIX" => Self::word_trim_prefix,
+                "( str:string prefix:string -- result:string )",
+                "Strip prefix from start of str if present (otherwise return str unchanged)";
             "TRIM-SUFFIX" => Self::word_trim_suffix,
+                "( str:string suffix:string -- result:string )",
+                "Strip suffix from end of str if present (otherwise return str unchanged)";
         });
     }
 
@@ -332,9 +334,17 @@ impl StringModule {
     fn register_regex_words(module: &mut Module) {
         register_words!(module, {
             "RE-MATCH?" => Self::word_re_match_q,
+                "( str:string pattern:string -- bool:boolean )",
+                "Returns true if str matches the regex pattern. Predicate-only — does not return the match.";
             "RE-MATCH" => Self::word_re_match,
+                "( string:string pattern:string -- match:any )",
+                "Match string against regex pattern: array [full, group1, ...] with null for non-participating groups; null on no match or null input";
             "RE-MATCH-ALL" => Self::word_re_match_all,
+                "( string:string pattern:string -- matches:any[] )",
+                "Find all regex matches in string (group 1 when it participated, else the full match)";
             "RE-REPLACE" => Self::word_re_replace,
+                "( string:string pattern:string replace:string -- result:string )",
+                "Replace all regex matches of pattern with replace. For literal replacement use REPLACE.";
         });
     }
 
@@ -343,11 +353,23 @@ impl StringModule {
     fn register_shell_words(module: &mut Module) {
         register_words!(module, {
             "LINES" => Self::word_lines,
+                "( str:string -- lines:string[] )",
+                "Split string on newline. Equivalent to /N SPLIT.";
             "UNLINES" => Self::word_unlines,
+                "( lines:string[] -- str:string )",
+                "Join an array of lines with newlines. Equivalent to /N JOIN.";
             "GREP" => Self::word_grep,
+                "( strings:string[] pattern:string -- matches:string[] )",
+                "Keep only strings matching the regex pattern (bash grep); non-strings are dropped";
             "GREP-V" => Self::word_grep_v,
+                "( strings:string[] pattern:string -- non_matches:string[] )",
+                "Keep elements NOT matching the regex pattern, including non-strings (bash grep -v)";
             "SED" => Self::word_sed,
+                "( strings:string[] pattern:string repl:string -- strings:string[] )",
+                "Apply RE-REPLACE to each string in the array (bash sed s/pattern/repl/g); non-strings pass through";
             "CUT" => Self::word_cut,
+                "( strings:string[] sep:string field:number -- field_values:any[] )",
+                "Split each string on sep and pick the field-th column (bash cut). Out-of-range yields null.";
         });
     }
 
@@ -776,9 +798,11 @@ impl StringModule {
     // ===== Pattern Operations =====
 
     fn register_pattern_words(module: &mut Module) {
-        // REPLACE
-        let word = Arc::new(ModuleWord::new("REPLACE".to_string(), Self::word_replace));
-        module.add_exportable_word(word);
+        register_words!(module, {
+            "REPLACE" => Self::word_replace,
+                "( string:string text:string replace:string -- result:string )",
+                "Replace all literal occurrences of text with replace. For regex matching use RE-REPLACE.";
+        });
     }
 
     fn word_replace(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
@@ -800,20 +824,17 @@ impl StringModule {
     // ===== Constant Words =====
 
     fn register_constant_words(module: &mut Module) {
-        // /N - newline
-        let word = Arc::new(ModuleWord::new("/N".to_string(), Self::word_newline));
-        module.add_exportable_word(word);
-
-        // /R - carriage return
-        let word = Arc::new(ModuleWord::new(
-            "/R".to_string(),
-            Self::word_carriage_return,
-        ));
-        module.add_exportable_word(word);
-
-        // /T - tab
-        let word = Arc::new(ModuleWord::new("/T".to_string(), Self::word_tab));
-        module.add_exportable_word(word);
+        register_words!(module, {
+            "/N" => Self::word_newline,
+                "( -- char:string )",
+                "Newline character";
+            "/R" => Self::word_carriage_return,
+                "( -- char:string )",
+                "Carriage return character";
+            "/T" => Self::word_tab,
+                "( -- char:string )",
+                "Tab character";
+        });
     }
 
     fn word_newline(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {

@@ -13,9 +13,8 @@
 
 use crate::errors::ForthicError;
 use crate::literals::ForthicValue;
-use crate::module::{register_words, InterpreterContext, Module, ModuleWord};
+use crate::module::{register_words, InterpreterContext, Module};
 use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveTime, TimeZone, Timelike, Utc};
-use std::sync::Arc;
 
 /// DateTimeModule provides date and time operations
 pub struct DateTimeModule {
@@ -52,13 +51,14 @@ impl DateTimeModule {
     // ===== Current Date/Time Operations =====
 
     fn register_current_words(module: &mut Module) {
-        // TODAY
-        let word = Arc::new(ModuleWord::new("TODAY".to_string(), Self::word_today));
-        module.add_exportable_word(word);
-
-        // NOW
-        let word = Arc::new(ModuleWord::new("NOW".to_string(), Self::word_now));
-        module.add_exportable_word(word);
+        register_words!(module, {
+            "TODAY" => Self::word_today,
+                "( -- date:Date )",
+                "Today's date in the interpreter timezone";
+            "NOW" => Self::word_now,
+                "( -- datetime:DateTime )",
+                "Current datetime in the interpreter timezone";
+        });
     }
 
     /// The interpreter's configured timezone (falls back to UTC on an
@@ -85,24 +85,20 @@ impl DateTimeModule {
     // ===== Conversion To Date/Time =====
 
     fn register_conversion_to_words(module: &mut Module) {
-        // >TIME
-        let word = Arc::new(ModuleWord::new(">TIME".to_string(), Self::word_to_time));
-        module.add_exportable_word(word);
-
-        // >DATE
-        let word = Arc::new(ModuleWord::new(">DATE".to_string(), Self::word_to_date));
-        module.add_exportable_word(word);
-
-        // >DATETIME
-        let word = Arc::new(ModuleWord::new(
-            ">DATETIME".to_string(),
-            Self::word_to_datetime,
-        ));
-        module.add_exportable_word(word);
-
-        // AT
-        let word = Arc::new(ModuleWord::new("AT".to_string(), Self::word_at));
-        module.add_exportable_word(word);
+        register_words!(module, {
+            ">TIME" => Self::word_to_time,
+                "( item:any -- time:Time )",
+                "Convert string or datetime to a time (null if unparseable)";
+            ">DATE" => Self::word_to_date,
+                "( item:any -- date:Date )",
+                "Convert string or datetime to a date (null if unparseable; trailing-Z instants resolve in the interpreter timezone)";
+            ">DATETIME" => Self::word_to_datetime,
+                "( item:any -- datetime:DateTime )",
+                "Convert string, epoch seconds, or date to a datetime in the interpreter timezone (null if unparseable)";
+            "AT" => Self::word_at,
+                "( date:Date time:Time -- datetime:DateTime )",
+                "Combine a date and a time into a datetime at that wall clock in the interpreter timezone";
+        });
     }
 
     fn word_to_time(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
@@ -261,26 +257,17 @@ impl DateTimeModule {
     // ===== Conversion From Date/Time =====
 
     fn register_conversion_from_words(module: &mut Module) {
-        // TIME>STR
-        let word = Arc::new(ModuleWord::new(
-            "TIME>STR".to_string(),
-            Self::word_time_to_str,
-        ));
-        module.add_exportable_word(word);
-
-        // DATE>STR
-        let word = Arc::new(ModuleWord::new(
-            "DATE>STR".to_string(),
-            Self::word_date_to_str,
-        ));
-        module.add_exportable_word(word);
-
-        // DATE>INT
-        let word = Arc::new(ModuleWord::new(
-            "DATE>INT".to_string(),
-            Self::word_date_to_int,
-        ));
-        module.add_exportable_word(word);
+        register_words!(module, {
+            "TIME>STR" => Self::word_time_to_str,
+                "( time:Time -- str:string )",
+                "Convert time to HH:MM string (empty string for non-times)";
+            "DATE>STR" => Self::word_date_to_str,
+                "( date:Date -- str:string )",
+                "Convert date to YYYY-MM-DD string (empty string for non-dates)";
+            "DATE>INT" => Self::word_date_to_int,
+                "( date:Date -- int:number )",
+                "Convert date to a YYYYMMDD integer (null for non-dates)";
+        });
     }
 
     fn word_time_to_str(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
@@ -328,19 +315,16 @@ impl DateTimeModule {
     // ===== Timestamp Operations =====
 
     fn register_timestamp_words(module: &mut Module) {
-        // >TIMESTAMP
-        let word = Arc::new(ModuleWord::new(
-            ">TIMESTAMP".to_string(),
-            Self::word_to_timestamp,
-        ));
-        module.add_exportable_word(word);
-
-        // TIMESTAMP>DATETIME
-        let word = Arc::new(ModuleWord::new(
-            "TIMESTAMP>DATETIME".to_string(),
-            Self::word_timestamp_to_datetime,
-        ));
-        module.add_exportable_word(word);
+        // NOTE: TIMESTAMP>DATETIME resolves in UTC on this branch (see the
+        // conversion-to note above)
+        register_words!(module, {
+            ">TIMESTAMP" => Self::word_to_timestamp,
+                "( datetime:DateTime -- timestamp:number )",
+                "Convert datetime to Unix timestamp in seconds (null for non-datetimes)";
+            "TIMESTAMP>DATETIME" => Self::word_timestamp_to_datetime,
+                "( timestamp:number -- datetime:DateTime )",
+                "Convert Unix timestamp (seconds, fractional ok) to a datetime in the interpreter timezone";
+        });
     }
 
     fn word_to_timestamp(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
@@ -377,16 +361,14 @@ impl DateTimeModule {
     // ===== Date Math Operations =====
 
     fn register_date_math_words(module: &mut Module) {
-        // ADD-DAYS
-        let word = Arc::new(ModuleWord::new("ADD-DAYS".to_string(), Self::word_add_days));
-        module.add_exportable_word(word);
-
-        // DAYS-BETWEEN
-        let word = Arc::new(ModuleWord::new(
-            "DAYS-BETWEEN".to_string(),
-            Self::word_days_between,
-        ));
-        module.add_exportable_word(word);
+        register_words!(module, {
+            "ADD-DAYS" => Self::word_add_days,
+                "( date:Date num_days:number -- date:Date )",
+                "Add days to a date";
+            "DAYS-BETWEEN" => Self::word_days_between,
+                "( date1:Date date2:Date -- num_days:number )",
+                "Get number of days between two dates (date1 - date2)";
+        });
     }
 
     fn word_add_days(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
@@ -444,7 +426,11 @@ impl DateTimeModule {
     fn register_meridiem_words(module: &mut Module) {
         register_words!(module, {
             "AM" => Self::word_am,
+                "( time:Time -- time:Time )",
+                "Convert time to AM (subtract 12 from hour if >= 12); non-times pass through unchanged";
             "PM" => Self::word_pm,
+                "( time:Time -- time:Time )",
+                "Convert time to PM (add 12 to hour if < 12); non-times pass through unchanged";
         });
     }
 
@@ -494,8 +480,14 @@ impl DateTimeModule {
     fn register_component_words(module: &mut Module) {
         register_words!(module, {
             "YEAR" => Self::word_year,
+                "( date:Date -- year:number )",
+                "Get the calendar year of a date";
             "MONTH" => Self::word_month,
+                "( date:Date -- month:number )",
+                "Get the calendar month of a date (1=January, 12=December)";
             "DAY-OF-WEEK" => Self::word_day_of_week,
+                "( date:Date -- day:number )",
+                "Get the day-of-week (1=Monday, 7=Sunday, ISO 8601)";
         });
     }
 

@@ -10,9 +10,8 @@
 
 use crate::errors::ForthicError;
 use crate::literals::ForthicValue;
-use crate::module::{register_words, InterpreterContext, Module, ModuleWord};
+use crate::module::{register_words, InterpreterContext, Module};
 use indexmap::IndexMap;
-use std::sync::Arc;
 
 /// MathModule provides mathematical operations
 pub struct MathModule {
@@ -46,25 +45,26 @@ impl MathModule {
     // ===== Arithmetic Operations =====
 
     fn register_arithmetic_words(module: &mut Module) {
-        // +
-        let word = Arc::new(ModuleWord::new("+".to_string(), Self::word_plus));
-        module.add_exportable_word(word);
-
-        // -
-        let word = Arc::new(ModuleWord::new("-".to_string(), Self::word_minus));
-        module.add_exportable_word(word);
-
-        // *
-        let word = Arc::new(ModuleWord::new("*".to_string(), Self::word_times));
-        module.add_exportable_word(word);
-
-        // /
-        let word = Arc::new(ModuleWord::new("/".to_string(), Self::word_divide));
-        module.add_exportable_word(word);
-
-        // MOD
-        let word = Arc::new(ModuleWord::new("MOD".to_string(), Self::word_mod));
-        module.add_exportable_word(word);
+        // NOTE: rs + and * still accept an array on top of the stack and
+        // fold it (ts errors there, pointing at SUM/PRODUCT) — the docs
+        // describe THIS code.
+        register_words!(module, {
+            "+" => Self::word_plus,
+                "( a:number b:number -- sum:number )",
+                "Add two numbers; an array on top sums its elements instead (like SUM)";
+            "-" => Self::word_minus,
+                "( a:number b:number -- difference:number )",
+                "Subtract b from a";
+            "*" => Self::word_times,
+                "( a:number b:number -- product:number )",
+                "Multiply two numbers; an array on top multiplies its elements instead (like PRODUCT)";
+            "/" => Self::word_divide,
+                "( a:number b:number -- quotient:number )",
+                "Divide a by b (null on division by zero)";
+            "MOD" => Self::word_mod,
+                "( m:number n:number -- remainder:number )",
+                "Modulo operation (m % n)";
+        });
     }
 
     fn word_plus(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
@@ -180,23 +180,21 @@ impl MathModule {
     fn register_aggregate_words(module: &mut Module) {
         register_words!(module, {
             "PRODUCT" => Self::word_product,
+                "( numbers:number[] -- product:number )",
+                "Product of array of numbers (1 if empty). Null/non-numeric elements yield null.";
+            "SUM" => Self::word_sum,
+                "( numbers:number[] -- sum:number )",
+                "Sum of an array of numbers (non-numeric elements are skipped; non-array input passes through)";
+            "MAX" => Self::word_max,
+                "( numbers:number[] -- max:number )",
+                "Maximum of an array of numbers (null if empty/all non-numeric); two scalars compare directly";
+            "MIN" => Self::word_min,
+                "( numbers:number[] -- min:number )",
+                "Minimum of an array of numbers (null if empty/all non-numeric); two scalars compare directly";
+            "MEAN" => Self::word_mean,
+                "( items:any[] -- mean:any )",
+                "Polymorphic mean: numbers average; strings give a frequency record; records give field-wise means; nulls skipped";
         });
-
-        // SUM
-        let word = Arc::new(ModuleWord::new("SUM".to_string(), Self::word_sum));
-        module.add_exportable_word(word);
-
-        // MAX
-        let word = Arc::new(ModuleWord::new("MAX".to_string(), Self::word_max));
-        module.add_exportable_word(word);
-
-        // MIN
-        let word = Arc::new(ModuleWord::new("MIN".to_string(), Self::word_min));
-        module.add_exportable_word(word);
-
-        // MEAN
-        let word = Arc::new(ModuleWord::new("MEAN".to_string(), Self::word_mean));
-        module.add_exportable_word(word);
     }
 
     fn word_sum(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
@@ -400,19 +398,18 @@ impl MathModule {
     fn register_conversion_words(module: &mut Module) {
         register_words!(module, {
             "FORMAT-FIXED" => Self::word_format_fixed,
+                "( num:number digits:number -- result:string )",
+                "Format number with fixed decimal places";
+            ">INT" => Self::word_to_int,
+                "( a:any -- int:number )",
+                "Convert to integer (returns length for arrays, 0 for null/unparseable input)";
+            ">FLOAT" => Self::word_to_float,
+                "( a:any -- float:number )",
+                "Convert to float (0.0 for null/unparseable input)";
+            "ROUND" => Self::word_round,
+                "( num:number -- int:number )",
+                "Round to nearest integer";
         });
-
-        // >INT
-        let word = Arc::new(ModuleWord::new(">INT".to_string(), Self::word_to_int));
-        module.add_exportable_word(word);
-
-        // >FLOAT
-        let word = Arc::new(ModuleWord::new(">FLOAT".to_string(), Self::word_to_float));
-        module.add_exportable_word(word);
-
-        // ROUND
-        let word = Arc::new(ModuleWord::new("ROUND".to_string(), Self::word_round));
-        module.add_exportable_word(word);
     }
 
     fn word_to_int(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
@@ -479,20 +476,21 @@ impl MathModule {
     fn register_math_functions(module: &mut Module) {
         register_words!(module, {
             "SQRT" => Self::word_sqrt,
+                "( n:number -- sqrt:number )",
+                "Square root (NaN for negative input, null for non-numeric)";
             "CLAMP" => Self::word_clamp,
+                "( value:number min:number max:number -- clamped:number )",
+                "Constrain value to range [min, max] (min wins when min > max)";
+            "ABS" => Self::word_abs,
+                "( n:number -- abs:number )",
+                "Absolute value";
+            "FLOOR" => Self::word_floor,
+                "( n:number -- floor:number )",
+                "Round down to integer";
+            "CEIL" => Self::word_ceil,
+                "( n:number -- ceil:number )",
+                "Round up to integer";
         });
-
-        // ABS
-        let word = Arc::new(ModuleWord::new("ABS".to_string(), Self::word_abs));
-        module.add_exportable_word(word);
-
-        // FLOOR
-        let word = Arc::new(ModuleWord::new("FLOOR".to_string(), Self::word_floor));
-        module.add_exportable_word(word);
-
-        // CEIL
-        let word = Arc::new(ModuleWord::new("CEIL".to_string(), Self::word_ceil));
-        module.add_exportable_word(word);
     }
 
     fn word_abs(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
