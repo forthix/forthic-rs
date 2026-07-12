@@ -233,19 +233,17 @@ fn test_join() {
 }
 
 #[test]
-fn test_concat_two_strings() {
+fn test_concat_two_strings_rejected() {
+    // The variable-arity two-string form was removed (it popped a different
+    // number of stack items depending on argument type — ts contract is
+    // array-only). Two strings: [ s1 s2 ] CONCAT.
     let module = StringModule::new();
     let mut ctx = MockContext::new();
 
     let word = module.module().find_word("CONCAT").unwrap();
     ctx.stack.push(ForthicValue::String("hello".to_string()));
     ctx.stack.push(ForthicValue::String(" world".to_string()));
-    word.execute(&mut ctx).unwrap();
-
-    assert_eq!(
-        ctx.stack.pop(),
-        Some(ForthicValue::String("hello world".to_string()))
-    );
+    assert!(word.execute(&mut ctx).is_err());
 }
 
 #[test]

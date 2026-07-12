@@ -180,11 +180,11 @@ fn test_take() {
 }
 
 #[test]
-fn test_drop() {
+fn test_skip() {
     let module = ArrayModule::new();
     let mut ctx = MockContext::new();
 
-    let word = module.module().find_word("DROP").unwrap();
+    let word = module.module().find_word("SKIP").unwrap();
     ctx.stack.push(ForthicValue::Array(vec![
         ForthicValue::Int(1),
         ForthicValue::Int(2),
@@ -254,29 +254,11 @@ fn test_append() {
 }
 
 #[test]
-fn test_concat() {
+fn test_array_concat_removed() {
+    // The array CONCAT was shadowed by string CONCAT (unreachable by bare
+    // name) and had no ts counterpart — ts idiom: [a1 a2] FLATTEN
     let module = ArrayModule::new();
-    let mut ctx = MockContext::new();
-
-    let word = module.module().find_word("CONCAT").unwrap();
-    ctx.stack.push(ForthicValue::Array(vec![
-        ForthicValue::Int(1),
-        ForthicValue::Int(2),
-    ]));
-    ctx.stack.push(ForthicValue::Array(vec![
-        ForthicValue::Int(3),
-        ForthicValue::Int(4),
-    ]));
-    word.execute(&mut ctx).unwrap();
-
-    let result = ctx.stack.pop().unwrap();
-    if let ForthicValue::Array(arr) = result {
-        assert_eq!(arr.len(), 4);
-        assert_eq!(arr[0], ForthicValue::Int(1));
-        assert_eq!(arr[3], ForthicValue::Int(4));
-    } else {
-        panic!("Expected array");
-    }
+    assert!(module.module().find_word("CONCAT").is_none());
 }
 
 #[test]
@@ -462,23 +444,16 @@ fn test_range_ascending() {
 }
 
 #[test]
-fn test_range_descending() {
+fn test_range_reversed_is_empty() {
+    // ts contract: end < start yields an empty range (the old rs behavior
+    // produced a descending range — a silent cross-runtime divergence)
     let module = ArrayModule::new();
     let mut ctx = MockContext::new();
-
     let word = module.module().find_word("RANGE").unwrap();
     ctx.stack.push(ForthicValue::Int(5));
     ctx.stack.push(ForthicValue::Int(1));
     word.execute(&mut ctx).unwrap();
-
-    let result = ctx.stack.pop().unwrap();
-    if let ForthicValue::Array(arr) = result {
-        assert_eq!(arr.len(), 5);
-        assert_eq!(arr[0], ForthicValue::Int(5));
-        assert_eq!(arr[4], ForthicValue::Int(1));
-    } else {
-        panic!("Expected array");
-    }
+    assert_eq!(ctx.stack.pop(), Some(ForthicValue::Array(vec![])));
 }
 
 #[test]

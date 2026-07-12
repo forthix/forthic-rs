@@ -75,7 +75,7 @@ fn test_json_round_trip_preserves_order() {
     assert_eq!(result, s(r#"{"z":1,"a":2,"m":3}"#));
 }
 
-// ===== TAKE / DROP / TAKE-LAST on records =====
+// ===== TAKE / SKIP / TAKE-LAST on records =====
 
 #[test]
 fn test_take_on_record_preserves_shape_and_order() {
@@ -99,11 +99,11 @@ fn test_take_push_rest_on_arrays() {
 }
 
 #[test]
-fn test_drop_on_record() {
-    let rest = run(&format!("{ZAM} 1 DROP"));
+fn test_skip_on_record() {
+    let rest = run(&format!("{ZAM} 1 SKIP"));
     assert_eq!(record_keys(&rest), vec!["a", "m"]);
-    // n <= 0 drops nothing
-    let unchanged = run(&format!("{ZAM} 0 DROP"));
+    // n <= 0 skips nothing
+    let unchanged = run(&format!("{ZAM} 0 SKIP"));
     assert_eq!(record_keys(&unchanged), vec!["z", "a", "m"]);
 }
 

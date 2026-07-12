@@ -3,9 +3,9 @@
 // Essential interpreter operations for stack manipulation, variables, and control flow.
 //
 // ## Categories
-// - Stack: POP, DUP, SWAP
+// - Stack: DROP, DUP, SWAP
 // - Variables: VARIABLES, !, @, !@
-// - Control: IDENTITY, NOP, NULL, ARRAY?, DEFAULT
+// - Control: NOP, NULL, ARRAY?, DEFAULT
 // - Errors: TRY, OK?, ERROR?, UNWRAP, UNWRAP-OR (Rust Result semantics:
 //   'CODE' TRY UNWRAP is CODE — mirrored with forthic-ts)
 // - Options: ~> (converts array to WordOptions)
@@ -231,8 +231,8 @@ impl CoreModule {
     // ===== Stack Operations =====
 
     fn register_stack_words(module: &mut Module) {
-        // POP
-        let word = Arc::new(ModuleWord::new("POP".to_string(), Self::word_pop));
+        // DROP (pop top of stack — ts-canonical name; the classic POP is dropped)
+        let word = Arc::new(ModuleWord::new("DROP".to_string(), Self::word_drop));
         module.add_exportable_word(word);
 
         // DUP
@@ -244,7 +244,7 @@ impl CoreModule {
         module.add_exportable_word(word);
     }
 
-    fn word_pop(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+    fn word_drop(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
         context.stack_pop()?;
         Ok(())
     }
@@ -419,10 +419,6 @@ impl CoreModule {
     // ===== Control Flow Operations =====
 
     fn register_control_words(module: &mut Module) {
-        // IDENTITY
-        let word = Arc::new(ModuleWord::new("IDENTITY".to_string(), Self::word_identity));
-        module.add_exportable_word(word);
-
         // NOP
         let word = Arc::new(ModuleWord::new("NOP".to_string(), Self::word_nop));
         module.add_exportable_word(word);
@@ -438,11 +434,6 @@ impl CoreModule {
         // DEFAULT
         let word = Arc::new(ModuleWord::new("DEFAULT".to_string(), Self::word_default));
         module.add_exportable_word(word);
-    }
-
-    fn word_identity(_context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
-        // No-op
-        Ok(())
     }
 
     fn word_nop(_context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {

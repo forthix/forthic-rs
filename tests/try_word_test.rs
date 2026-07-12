@@ -84,7 +84,7 @@ fn test_try_wraps_failure_with_message_and_error_type() {
 fn test_try_is_transactional_for_the_stack_on_failure() {
     // The failing code consumes 2 and would have kept going; afterwards the
     // stack must be exactly [1, 2, outcome]
-    let stack = run_all("1 2 'POP POP NO-SUCH-WORD' TRY");
+    let stack = run_all("1 2 'DROP DROP NO-SUCH-WORD' TRY");
     assert_eq!(stack.len(), 3);
     assert_eq!(stack[0], ForthicValue::Int(1));
     assert_eq!(stack[1], ForthicValue::Int(2));
@@ -95,7 +95,7 @@ fn test_try_is_transactional_for_the_stack_on_failure() {
 fn test_try_does_not_roll_back_side_effects() {
     // catch_unwind semantics: the variable write before the failure persists
     assert_eq!(
-        run("'42 .written ! NO-SUCH-WORD' TRY POP .written @"),
+        run("'42 .written ! NO-SUCH-WORD' TRY DROP .written @"),
         ForthicValue::Int(42)
     );
 }
@@ -121,7 +121,7 @@ fn test_try_success_consumes_inputs_legitimately() {
 
 #[test]
 fn test_try_net_zero_code_succeeds_with_ok_null() {
-    let outcome = run("'1 POP' TRY");
+    let outcome = run("'1 DROP' TRY");
     assert_eq!(ok_of(&outcome), Some(&ForthicValue::Null));
 }
 

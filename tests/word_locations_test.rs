@@ -38,10 +38,10 @@ fn test_unknown_word_carries_location() {
 
 #[test]
 fn test_stack_underflow_carries_call_site() {
-    let code = "1 POP POP";
+    let code = "1 DROP DROP";
     let err = run_err(code);
     let loc = err.get_location().expect("StackUnderflow has a location");
-    assert_eq!(loc.column, code.rfind("POP").unwrap() + 1, "second POP");
+    assert_eq!(loc.column, code.rfind("DROP").unwrap() + 1, "second DROP");
 }
 
 #[test]
@@ -84,50 +84,50 @@ fn word_execution_locations(err: &ForthicError) -> (Option<usize>, Option<usize>
 #[test]
 fn test_error_reports_failing_words_own_capture_site() {
     // The ts #30 race scenario: two definitions share the SAME dictionary
-    // word (POP). Each error must point at that definition's own use of it.
+    // word (DROP). Each error must point at that definition's own use of it.
     let mut interp = Interpreter::standard("UTC");
-    let alpha = ": ALPHA      POP ;";
-    let beta = ": BETA POP ;";
+    let alpha = ": ALPHA      DROP ;";
+    let beta = ": BETA DROP ;";
     interp.run(alpha).unwrap();
     interp.run(beta).unwrap();
 
     let err_alpha = interp.run("ALPHA").unwrap_err();
     let (_, def_col) = word_execution_locations(&err_alpha);
-    assert_eq!(def_col, Some(col_of(alpha, "POP")), "ALPHA's own POP");
+    assert_eq!(def_col, Some(col_of(alpha, "DROP")), "ALPHA's own DROP");
 
     let err_beta = interp.run("BETA").unwrap_err();
     let (_, def_col) = word_execution_locations(&err_beta);
-    assert_eq!(def_col, Some(col_of(beta, "POP")), "BETA's own POP");
+    assert_eq!(def_col, Some(col_of(beta, "DROP")), "BETA's own DROP");
 }
 
 #[test]
 fn test_same_word_twice_in_one_definition() {
     // The failing OCCURRENCE is identified, not just the word
     let mut interp = Interpreter::standard("UTC");
-    let def = ": F POP POP ;";
+    let def = ": F DROP DROP ;";
     interp.run(def).unwrap();
     interp.stack_push(forthic::literals::ForthicValue::Int(1));
     let err = interp.run("F").unwrap_err();
     let (_, def_col) = word_execution_locations(&err);
     assert_eq!(
         def_col,
-        Some(def.rfind("POP").unwrap() + 1),
-        "second POP is the one that underflows"
+        Some(def.rfind("DROP").unwrap() + 1),
+        "second DROP is the one that underflows"
     );
 }
 
 #[test]
 fn test_call_location_records_the_invocation_site() {
     let mut interp = Interpreter::standard("UTC");
-    let def = ": F POP ;";
+    let def = ": F DROP ;";
     interp.run(def).unwrap();
-    let call_code = "42 POP F"; // stack empty by the time F runs
+    let call_code = "42 DROP F"; // stack empty by the time F runs
     let err = interp.run(call_code).unwrap_err();
     let (call_col, def_col) = word_execution_locations(&err);
     assert_eq!(call_col, Some(col_of(call_code, "F")), "where F was called");
     assert_eq!(
         def_col,
-        Some(col_of(def, "POP")),
+        Some(col_of(def, "DROP")),
         "which word inside F failed"
     );
 }

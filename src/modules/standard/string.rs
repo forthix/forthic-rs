@@ -275,30 +275,34 @@ impl StringModule {
         Ok(())
     }
 
+    /// CONCAT: ( strings[] -- str ) — one argument, always (ts contract).
+    /// The old two-string fallback popped a DIFFERENT number of stack items
+    /// depending on argument type — arity instability ts deliberately
+    /// removed. Two strings: `[ s1 s2 ] CONCAT`.
     fn word_concat(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
-        let val2 = context.stack_pop()?;
+        let val = context.stack_pop()?;
 
-        let result = match val2 {
+        let result = match val {
             ForthicValue::Array(arr) => {
-                // Concatenate array of strings
                 let parts: Vec<String> = arr
                     .iter()
-                    .filter_map(|v| match v {
-                        ForthicValue::String(s) => Some(s.clone()),
-                        _ => None,
+                    .map(|v| match v {
+                        ForthicValue::Null => String::new(),
+                        other => Self::stringify(other),
                     })
                     .collect();
                 ForthicValue::String(parts.join(""))
             }
-            ForthicValue::String(s2) => {
-                // Concatenate two strings
-                let val1 = context.stack_pop()?;
-                match val1 {
-                    ForthicValue::String(s1) => ForthicValue::String(format!("{}{}", s1, s2)),
-                    _ => ForthicValue::String(s2),
-                }
+            other => {
+                return Err(ForthicError::InvalidOperation {
+                    forthic: String::new(),
+                    message: format!(
+                        "CONCAT requires an array of strings (got {other:?}). Wrap two strings as [s1 s2] CONCAT."
+                    ),
+                    location: None,
+                    cause: None,
+                })
             }
-            _ => ForthicValue::String(String::new()),
         };
 
         context.stack_push(result);
