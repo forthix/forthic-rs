@@ -199,6 +199,21 @@ mirrors in the same pass — the plain-time extension (ts #36) is the model.
     docs. A cheap register_words! macro_rules (registration sugar only, no
     metadata) can land anytime.
 
+23. **ts: align JQ/record semantics to the cross-runtime contract**
+    (rs -> ts, like #21). Bucket 1 — silent-corruption bugs rs fixed by
+    design: strict [n] path parsing (parseInt('1x')->1 silently indexes),
+    OMIT's === Set (numeric drop keys never match string record keys),
+    JQ! array holes (out-of-range sets create JS holes = undefined reads;
+    pad with null per the #39 purge), JQ! negative-index/field-into-array
+    silent property sets (error instead), DELETE's NaN->0 splice (a
+    non-numeric array key deletes element 0; require integers). Bucket 2 —
+    de-sort record order: ts sorts keys in JQ@ record-index/iterate and
+    REC>ENTRIES (a JS-object-order workaround) while its own #33 words
+    (KEYS/NTH/FIRST) use raw object order — internally inconsistent. Drop
+    the sorts; document the residual integer-like-key hoist as a host
+    quirk (units-style); NOTE: REC>ENTRIES' docstring promises sorted
+    output, so this is a documented contract change.
+
 ## Immune — do not port (Rust semantics already close these)
 
 - **Copy-on-write aliasing (ts #32)**: rs values are owned; variable fetch
