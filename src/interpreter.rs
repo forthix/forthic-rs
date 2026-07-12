@@ -1056,6 +1056,14 @@ impl InterpreterContext for Interpreter {
         self.module_stack.len()
     }
 
+    fn find_variable_value(&self, name: &str) -> Option<ForthicValue> {
+        // Top of the module stack first (mirrors ts find_module_variable)
+        self.module_stack
+            .iter()
+            .rev()
+            .find_map(|m| m.get_variable(name).map(|v| v.get_value().clone()))
+    }
+
     fn stack_pop(&mut self) -> Result<ForthicValue, ForthicError> {
         self.stack.pop()
     }

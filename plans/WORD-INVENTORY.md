@@ -94,12 +94,41 @@ integer parse in [n] (no parseInt leniency). Also this batch: the
 register_words! macro (backlog item 22 Tier 1) replacing all registration
 tables.
 
-**Batch 4 — strings & interpolation:**
-INTERPOLATE (string version: {.var}@ holes), STR-LENGTH, SUBSTR, SPLICE,
-STARTS-WITH?/ENDS-WITH?, TRIM-PREFIX/TRIM-SUFFIX, RE-MATCH? / RE-MATCH
-(decide rs match representation) / RE-MATCH-ALL / RE-REPLACE (REPLACE stays
-literal), LINES/UNLINES, GREP/GREP-V, SED, CUT. Regexes are documented
-trusted input (#34).
+**Batch 4 — strings & interpolation: DONE (feat/word-batch4):**
+STR-LENGTH, SUBSTR, SPLICE (JS-slice clamping over CHAR indices —
+host-native units, item 18), STARTS-WITH?/ENDS-WITH?,
+TRIM-PREFIX/TRIM-SUFFIX (one occurrence), RE-MATCH? / RE-MATCH (array
+[full, g1, ...], NULL for non-participating groups AND for no-match/null
+input — ts pushes false there, both falsy) / RE-MATCH-ALL (group 1 else
+full match) / RE-REPLACE (REPLACE stays literal; JS backrefs $&/$n
+normalized to ${n} for the rs engine), LINES/UNLINES, GREP (matching
+strings only) / GREP-V (keeps non-strings — deliberate asymmetry), SED
+(non-strings pass through), CUT (literal separator; '' splits into chars;
+out-of-range field -> NULL).
+
+INTERPOLATE + PRINT (Batch 1 deferrals) — REDESIGNED with Rino
+2026-07-11, replacing both the ts bare-dot grammar and the `{.var}@`
+grammar with ONE contract in both runtimes (core module; the string
+module's INTERPOLATE is gone):
+- `${name}` holes (ts-template-literal style; `${.name}` dot-symbol
+  spelling also accepted; body whitespace trims). `\${` escapes.
+- Holes are variable names ONLY — a non-name body (`${1 + 2}`,
+  `${x:-default}`) is a hard error, so templates can NEVER execute
+  Forthic (injection-safe by construction; same reasoning as JQ paths).
+  `__` names reserved, as with ! / @.
+- READ-ONLY lookup via new InterpreterContext::find_variable_value
+  (module-stack walk) — a miss renders as null_text and creates nothing
+  (no @-style get-or-create; typos can't mint variables).
+- Rendering: null_text default "" (template-first — misses/NULLs render
+  empty; opt into '[.null_text "null"]'); arrays join with separator
+  (", "), elements recursively; records -> compact JSON; [.json TRUE]
+  renders anything as compact JSON.
+- PRINT = same options + rendering; strings interpolate first; pushes
+  nothing; stdout is safe under the jsonrpc transport (HTTP, not stdio).
+
+Regexes are documented trusted input (#34) — rs regex is linear-time, so
+the ReDoS caveat is ts-only; compile failures are clean InvalidOperation
+errors (ts throws raw SyntaxError).
 
 **Batch 5 — math & datetime round-out:**
 PRODUCT, SQRT, CLAMP, FORMAT-FIXED, AM/PM, DAYS-BETWEEN, YEAR, MONTH

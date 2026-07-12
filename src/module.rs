@@ -101,6 +101,14 @@ pub trait InterpreterContext {
     fn module_stack_depth(&self) -> usize {
         1
     }
+
+    /// Read a variable's value by name, searching the module stack top-down
+    /// (READ-ONLY — never creates). Used by INTERPOLATE/PRINT to render
+    /// variable holes; a miss renders as empty/null_text per each word's
+    /// contract. Defaults to None for simple contexts.
+    fn find_variable_value(&self, _name: &str) -> Option<ForthicValue> {
+        None
+    }
 }
 
 /// Word error handler trait - handles errors during word execution
