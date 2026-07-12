@@ -47,6 +47,13 @@ pub struct CoreModule {
     module: Module,
 }
 
+/// Resolved INTERPOLATE/PRINT options
+struct InterpOptions {
+    separator: String,
+    null_text: String,
+    json: bool,
+}
+
 impl CoreModule {
     /// Create a new CoreModule
     pub fn new() -> Self {
@@ -60,9 +67,186 @@ impl CoreModule {
         Self::register_flow_words(&mut module);
         Self::register_predicate_words(&mut module);
         Self::register_debug_words(&mut module);
+        Self::register_output_words(&mut module);
         Self::register_options_words(&mut module);
 
         Self { module }
+    }
+
+    // ===== Output & Interpolation (Batch 4) =====
+    //
+    // The ONE interpolation grammar (settled with Rino 2026-07-11):
+    // `${name}` holes, like ts template literals — but holes are VARIABLE
+    // NAMES ONLY, never expressions. Interpolation is injection-safe by
+    // construction: rendering a template can never execute words (the same
+    // reasoning that made JQ paths data instead of interpolated source).
+    // Computation belongs on the stack: `... .total ! "Sum: ${total}"`.
+
+    fn register_output_words(module: &mut Module) {
+        register_words!(module, {
+            "INTERPOLATE" => Self::word_interpolate,
+            "PRINT" => Self::word_print,
+        });
+    }
+
+    /// Pop a WordOptions value if one sits on top of the stack
+    fn pop_word_options(
+        context: &mut dyn InterpreterContext,
+    ) -> Option<crate::word_options::WordOptions> {
+        if matches!(context.stack_peek(), Some(ForthicValue::WordOptions(_))) {
+            if let Ok(ForthicValue::WordOptions(options)) = context.stack_pop() {
+                return Some(options);
+            }
+        }
+        None
+    }
+
+    fn pop_interp_options(context: &mut dyn InterpreterContext) -> InterpOptions {
+        let options = Self::pop_word_options(context);
+        let mut opts = InterpOptions {
+            separator: ", ".to_string(),
+            // Template-first default: an unset/NULL hole renders as
+            // nothing ("Hello ${name}!" must not say "Hello null!");
+            // opt into visible nulls with [.null_text 'null']
+            null_text: String::new(),
+            json: false,
+        };
+        if let Some(options) = options {
+            if let Some(ForthicValue::String(s)) = options.get("separator") {
+                opts.separator = s.clone();
+            }
+            if let Some(ForthicValue::String(s)) = options.get("null_text") {
+                opts.null_text = s.clone();
+            }
+            if let Some(b) = options.get_bool("json") {
+                opts.json = b;
+            }
+        }
+        opts
+    }
+
+    /// INTERPOLATE: ( string [options] -- string ) — fill `${name}` holes
+    /// from variables (READ-ONLY — a hole never creates a variable, unlike
+    /// `@`). The dot is optional (`${.name}` == `${name}`); whitespace in
+    /// the body trims; a miss or NULL renders as null_text. `\${` escapes
+    /// a literal `${`. A non-name hole body is an ERROR — holes are
+    /// variable names, never expressions. Options: separator (", "),
+    /// null_text (""), json (FALSE). NULL template stays NULL.
+    fn word_interpolate(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let opts = Self::pop_interp_options(context);
+        let value = context.stack_pop()?;
+        let template = match value {
+            ForthicValue::Null => {
+                context.stack_push(ForthicValue::Null);
+                return Ok(());
+            }
+            ForthicValue::String(s) => s,
+            other => crate::modules::standard::string::StringModule::stringify(&other),
+        };
+        let result = Self::interpolate_string(context, &template, &opts)?;
+        context.stack_push(ForthicValue::String(result));
+        Ok(())
+    }
+
+    /// PRINT: ( value [options] -- ) — print to stdout, pushing NOTHING.
+    /// Strings interpolate `${name}` holes first; other values format via
+    /// the same rendering rules. Reaches stdout only — safe under the
+    /// jsonrpc transport (HTTP, not stdio).
+    fn word_print(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let opts = Self::pop_interp_options(context);
+        let value = context.stack_pop()?;
+        let result = match &value {
+            ForthicValue::String(s) => Self::interpolate_string(context, s, &opts)?,
+            other => Self::value_to_string(other, &opts),
+        };
+        println!("{result}");
+        Ok(())
+    }
+
+    fn interpolate_string(
+        context: &mut dyn InterpreterContext,
+        template: &str,
+        opts: &InterpOptions,
+    ) -> Result<String, ForthicError> {
+        // `\${` escapes a literal `${`: swap for a NUL-fenced placeholder
+        // so the hole regex can't see it, restore after
+        const ESCAPED_HOLE: &str = "\x00ESCAPED_HOLE\x00";
+        let escaped = template.replace("\\${", ESCAPED_HOLE);
+
+        let hole = regex::Regex::new(r"\$\{([^{}]*)\}").expect("static regex");
+        let mut result = String::new();
+        let mut last = 0;
+        for caps in hole.captures_iter(&escaped) {
+            let whole = caps.get(0).expect("group 0");
+            result.push_str(&escaped[last..whole.start()]);
+            let name = Self::hole_name(caps.get(1).expect("group 1").as_str())?;
+            // READ-ONLY lookup: templates render state, never mutate it —
+            // a miss renders as null_text and creates nothing
+            let value = context
+                .find_variable_value(&name)
+                .unwrap_or(ForthicValue::Null);
+            result.push_str(&Self::value_to_string(&value, opts));
+            last = whole.end();
+        }
+        result.push_str(&escaped[last..]);
+        Ok(result.replace(ESCAPED_HOLE, "${"))
+    }
+
+    /// Validate a hole body into a variable name. Holes are names ONLY —
+    /// `${1 + 2}` is a hard error, not a template feature, so interpolation
+    /// can never execute code (injection-safe by construction). `__` names
+    /// are reserved, same as `!` / `@`.
+    fn hole_name(body: &str) -> Result<String, ForthicError> {
+        let trimmed = body.trim();
+        let name = trimmed.strip_prefix('.').unwrap_or(trimmed);
+        let valid = !name.is_empty()
+            && name
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+            && name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+        if !valid {
+            return Err(ForthicError::InvalidOperation {
+                forthic: String::new(),
+                message: format!(
+                    "Invalid interpolation hole '${{{body}}}': holes are variable names \
+                     (${{name}} or ${{.name}}), not expressions. \
+                     Escape a literal with \\${{"
+                ),
+                location: None,
+                cause: None,
+            });
+        }
+        if name.starts_with("__") {
+            return Err(ForthicError::InvalidVariableName {
+                forthic: "".to_string(),
+                varname: name.to_string(),
+                location: None,
+                cause: None,
+            });
+        }
+        Ok(name.to_string())
+    }
+
+    /// Shared value rendering for INTERPOLATE/PRINT: NULL -> null_text;
+    /// json option -> compact JSON; arrays join with separator (elements
+    /// render recursively, so NULL elements also use null_text);
+    /// records -> JSON
+    fn value_to_string(value: &ForthicValue, opts: &InterpOptions) -> String {
+        match value {
+            ForthicValue::Null => opts.null_text.clone(),
+            _ if opts.json => {
+                crate::modules::standard::json::JSONModule::forthic_to_json(value).to_string()
+            }
+            ForthicValue::Array(items) => items
+                .iter()
+                .map(|v| Self::value_to_string(v, opts))
+                .collect::<Vec<_>>()
+                .join(&opts.separator),
+            other => crate::modules::standard::string::StringModule::stringify(other),
+        }
     }
 
     // ===== Control Flow & Execution =====
@@ -707,5 +891,119 @@ impl CoreModule {
 impl Default for CoreModule {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! The ${name} hole grammar and rendering options are pinned here at
+    //! the helper level (INTERPOLATE itself is also covered by the Batch 4
+    //! integration tests); PRINT shares these internals.
+
+    use super::*;
+    use crate::interpreter::Interpreter;
+
+    fn opts() -> InterpOptions {
+        InterpOptions {
+            separator: ", ".to_string(),
+            null_text: String::new(),
+            json: false,
+        }
+    }
+
+    fn interpolate(setup: &str, template: &str) -> String {
+        let mut interp = Interpreter::standard("UTC");
+        if !setup.is_empty() {
+            interp.run(setup).unwrap();
+        }
+        CoreModule::interpolate_string(&mut interp, template, &opts()).unwrap()
+    }
+
+    #[test]
+    fn test_holes_are_explicit() {
+        assert_eq!(interpolate("7 .x !", "x is ${x}"), "x is 7");
+        // The dot-symbol spelling works too; body whitespace trims
+        assert_eq!(interpolate("7 .x !", "${.x} leads"), "7 leads");
+        assert_eq!(interpolate("7 .x !", "${ x } spaced"), "7 spaced");
+        // No hole without the full ${...} shape — bare dots and braces
+        // are literal text
+        assert_eq!(interpolate("7 .x !", "file.x {x} $x"), "file.x {x} $x");
+    }
+
+    #[test]
+    fn test_escaped_holes_stay_literal() {
+        assert_eq!(
+            interpolate("7 .x !", r"literal \${x} here"),
+            "literal ${x} here"
+        );
+        // The escape survives adjacent real holes
+        assert_eq!(interpolate("7 .x !", r"\${x} ${x}"), "${x} 7");
+    }
+
+    #[test]
+    fn test_lookup_is_read_only() {
+        let mut interp = Interpreter::standard("UTC");
+        let rendered = CoreModule::interpolate_string(&mut interp, "v: ${nope}", &opts()).unwrap();
+        assert_eq!(rendered, "v: ", "miss renders as null_text (default '')");
+        // ...and the miss created NOTHING (unlike @'s get-or-create)
+        assert!(interp.find_variable_value("nope").is_none());
+    }
+
+    #[test]
+    fn test_non_name_holes_are_errors_not_expressions() {
+        let mut interp = Interpreter::standard("UTC");
+        for template in ["${1 + 2}", "${}", "${x y}", "${x:-default}", "${9lives}"] {
+            let err = CoreModule::interpolate_string(&mut interp, template, &opts()).unwrap_err();
+            assert!(
+                err.to_string().contains("not expressions"),
+                "{template} -> {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_dunder_hole_names_error() {
+        let mut interp = Interpreter::standard("UTC");
+        let err = CoreModule::interpolate_string(&mut interp, "${__x}", &opts()).unwrap_err();
+        assert!(matches!(err, ForthicError::InvalidVariableName { .. }));
+    }
+
+    #[test]
+    fn test_value_rendering_options() {
+        let mut interp = Interpreter::standard("UTC");
+        interp.run("[ 1 NULL 3 ] .items !").unwrap();
+
+        let rendered =
+            CoreModule::interpolate_string(&mut interp, "items: ${items}", &opts()).unwrap();
+        assert_eq!(
+            rendered, "items: 1, , 3",
+            "arrays join with separator; NULL elements use null_text"
+        );
+
+        let json_opts = InterpOptions {
+            json: true,
+            ..opts()
+        };
+        let rendered =
+            CoreModule::interpolate_string(&mut interp, "items: ${items}", &json_opts).unwrap();
+        assert_eq!(rendered, "items: [1,null,3]");
+
+        let na_opts = InterpOptions {
+            separator: " | ".to_string(),
+            null_text: "N/A".to_string(),
+            json: false,
+        };
+        let rendered = CoreModule::interpolate_string(&mut interp, "${items}", &na_opts).unwrap();
+        assert_eq!(rendered, "1 | N/A | 3");
+        let rendered = CoreModule::interpolate_string(&mut interp, "${unset}", &na_opts).unwrap();
+        assert_eq!(rendered, "N/A", "misses use null_text too");
+    }
+
+    #[test]
+    fn test_records_render_as_json() {
+        assert_eq!(
+            interpolate("[ [ 'a' 1 ] ] REC .rec !", "rec: ${rec}"),
+            r#"rec: {"a":1}"#
+        );
     }
 }

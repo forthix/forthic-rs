@@ -11,7 +11,8 @@
 
 use crate::errors::ForthicError;
 use crate::literals::ForthicValue;
-use crate::module::{InterpreterContext, Module, ModuleWord};
+use crate::module::{register_words, InterpreterContext, Module, ModuleWord};
+use regex::Regex;
 use std::sync::Arc;
 
 /// StringModule provides string manipulation operations
@@ -29,6 +30,7 @@ impl StringModule {
         Self::register_transform_words(&mut module);
         Self::register_split_join_words(&mut module);
         Self::register_pattern_words(&mut module);
+        Self::register_batch4_words(&mut module);
         Self::register_constant_words(&mut module);
 
         Self { module }
@@ -80,7 +82,7 @@ impl StringModule {
     ///   null elements as empty strings (JS Array.prototype.toString) —
     ///   record elements render as JSON
     /// - temporal values use their ISO forms (Temporal toString)
-    fn stringify(val: &ForthicValue) -> String {
+    pub(crate) fn stringify(val: &ForthicValue) -> String {
         match val {
             ForthicValue::Null => String::new(),
             ForthicValue::String(s) => s.clone(),
@@ -305,6 +307,452 @@ impl StringModule {
             }
         };
 
+        context.stack_push(result);
+        Ok(())
+    }
+
+    // ===== Batch 4: substrings, predicates, regex, bash-flavored =====
+
+    fn register_batch4_words(module: &mut Module) {
+        register_words!(module, {
+            "STR-LENGTH" => Self::word_str_length,
+            "SUBSTR" => Self::word_substr,
+            "SPLICE" => Self::word_splice,
+            "STARTS-WITH?" => Self::word_starts_with_q,
+            "ENDS-WITH?" => Self::word_ends_with_q,
+            "TRIM-PREFIX" => Self::word_trim_prefix,
+            "TRIM-SUFFIX" => Self::word_trim_suffix,
+            "RE-MATCH?" => Self::word_re_match_q,
+            "RE-MATCH" => Self::word_re_match,
+            "RE-MATCH-ALL" => Self::word_re_match_all,
+            "RE-REPLACE" => Self::word_re_replace,
+            "LINES" => Self::word_lines,
+            "UNLINES" => Self::word_unlines,
+            "GREP" => Self::word_grep,
+            "GREP-V" => Self::word_grep_v,
+            "SED" => Self::word_sed,
+            "CUT" => Self::word_cut,
+        });
+    }
+
+    fn type_error(word: &str, hint: &str) -> ForthicError {
+        ForthicError::InvalidOperation {
+            forthic: String::new(),
+            message: format!("{word} requires a string. {hint}"),
+            location: None,
+            cause: None,
+        }
+    }
+
+    /// Compile a pattern with a clean error (ts throws a raw SyntaxError).
+    /// rs `regex` is linear-time, so ts's ReDoS caveat doesn't apply; its
+    /// \d/\w classes are Unicode-aware (ts's are ASCII without the u
+    /// flag) — accepted divergence.
+    fn compile(pattern: &str) -> Result<Regex, ForthicError> {
+        Regex::new(pattern).map_err(|e| ForthicError::InvalidOperation {
+            forthic: String::new(),
+            message: format!("Invalid regex '{pattern}': {e}"),
+            location: None,
+            cause: None,
+        })
+    }
+
+    /// Normalize JS replacement syntax for the rs regex engine: `$&` means
+    /// whole-match in JS (not special in rs) and JS reads `$1x` as group 1
+    /// then literal x where rs would look for a group NAMED "1x". Rewriting
+    /// to `${n}` form prevents silently wrong output.
+    fn normalize_replacement(repl: &str) -> String {
+        let mut out = String::with_capacity(repl.len());
+        let chars: Vec<char> = repl.chars().collect();
+        let mut i = 0;
+        while i < chars.len() {
+            if chars[i] == '$' && i + 1 < chars.len() {
+                match chars[i + 1] {
+                    '$' => {
+                        out.push_str("$$");
+                        i += 2;
+                    }
+                    '&' => {
+                        out.push_str("${0}");
+                        i += 2;
+                    }
+                    c if c.is_ascii_digit() => {
+                        let start = i + 1;
+                        let mut j = start;
+                        while j < chars.len() && chars[j].is_ascii_digit() {
+                            j += 1;
+                        }
+                        let digits: String = chars[start..j].iter().collect();
+                        out.push_str(&format!("${{{digits}}}"));
+                        i = j;
+                    }
+                    _ => {
+                        out.push('$');
+                        i += 1;
+                    }
+                }
+            } else {
+                out.push(chars[i]);
+                i += 1;
+            }
+        }
+        out
+    }
+
+    /// JS String.slice index resolution over CHAR indices (ts uses UTF-16
+    /// units, which can split surrogate pairs — sanctioned quirk-fix)
+    fn slice_index(i: i64, len: usize) -> usize {
+        let len = len as i64;
+        let resolved = if i < 0 { len + i } else { i };
+        resolved.clamp(0, len) as usize
+    }
+
+    fn pop_int_default(context: &mut dyn InterpreterContext) -> Result<i64, ForthicError> {
+        Ok(match context.stack_pop()? {
+            ForthicValue::Int(i) => i,
+            ForthicValue::Float(f) => f as i64,
+            _ => 0, // JS ToInteger(null) == 0
+        })
+    }
+
+    fn word_str_length(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let value = context.stack_pop()?;
+        let length = match value {
+            ForthicValue::Null => 0,
+            ForthicValue::String(s) => s.chars().count() as i64,
+            _ => {
+                return Err(Self::type_error(
+                    "STR-LENGTH",
+                    "For arrays/records, use LENGTH.",
+                ))
+            }
+        };
+        context.stack_push(ForthicValue::Int(length));
+        Ok(())
+    }
+
+    fn word_substr(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let end = Self::pop_int_default(context)?;
+        let start = Self::pop_int_default(context)?;
+        let value = context.stack_pop()?;
+        let result = match value {
+            ForthicValue::Null => String::new(),
+            ForthicValue::String(s) => {
+                let chars: Vec<char> = s.chars().collect();
+                let a = Self::slice_index(start, chars.len());
+                let b = Self::slice_index(end, chars.len());
+                if a >= b {
+                    String::new()
+                } else {
+                    chars[a..b].iter().collect()
+                }
+            }
+            _ => return Err(Self::type_error("SUBSTR", "For arrays/records, use SLICE.")),
+        };
+        context.stack_push(ForthicValue::String(result));
+        Ok(())
+    }
+
+    fn word_splice(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let newval = context.stack_pop()?;
+        let end = Self::pop_int_default(context)?;
+        let start = Self::pop_int_default(context)?;
+        let value = context.stack_pop()?;
+        let s = match value {
+            ForthicValue::Null => String::new(),
+            ForthicValue::String(s) => s,
+            _ => return Err(Self::type_error("SPLICE", "")),
+        };
+        let ins = match newval {
+            ForthicValue::Null => String::new(),
+            other => Self::stringify(&other),
+        };
+        let chars: Vec<char> = s.chars().collect();
+        let a = Self::slice_index(start, chars.len());
+        let b = Self::slice_index(end, chars.len());
+        let head: String = chars[..a].iter().collect();
+        let tail: String = chars[b.min(chars.len())..].iter().collect();
+        context.stack_push(ForthicValue::String(format!("{head}{ins}{tail}")));
+        Ok(())
+    }
+
+    fn pop_two_strings(
+        context: &mut dyn InterpreterContext,
+    ) -> Result<Option<(String, String)>, ForthicError> {
+        let b = context.stack_pop()?;
+        let a = context.stack_pop()?;
+        match (a, b) {
+            (ForthicValue::String(a), ForthicValue::String(b)) => Ok(Some((a, b))),
+            _ => Ok(None),
+        }
+    }
+
+    fn word_starts_with_q(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let result = Self::pop_two_strings(context)?
+            .map(|(s, prefix)| s.starts_with(&prefix))
+            .unwrap_or(false);
+        context.stack_push(ForthicValue::Bool(result));
+        Ok(())
+    }
+
+    fn word_ends_with_q(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let result = Self::pop_two_strings(context)?
+            .map(|(s, suffix)| s.ends_with(&suffix))
+            .unwrap_or(false);
+        context.stack_push(ForthicValue::Bool(result));
+        Ok(())
+    }
+
+    fn word_trim_prefix(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let prefix = context.stack_pop()?;
+        let value = context.stack_pop()?;
+        let result = match (&value, &prefix) {
+            (ForthicValue::String(s), ForthicValue::String(p)) if !p.is_empty() => {
+                ForthicValue::String(s.strip_prefix(p.as_str()).unwrap_or(s).to_string())
+            }
+            _ => value, // non-string str/prefix: unchanged
+        };
+        context.stack_push(result);
+        Ok(())
+    }
+
+    fn word_trim_suffix(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let suffix = context.stack_pop()?;
+        let value = context.stack_pop()?;
+        let result = match (&value, &suffix) {
+            (ForthicValue::String(s), ForthicValue::String(p)) if !p.is_empty() => {
+                ForthicValue::String(s.strip_suffix(p.as_str()).unwrap_or(s).to_string())
+            }
+            _ => value,
+        };
+        context.stack_push(result);
+        Ok(())
+    }
+
+    fn word_re_match_q(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let result = match Self::pop_two_strings(context)? {
+            Some((s, pattern)) => Self::compile(&pattern)?.is_match(&s),
+            None => false,
+        };
+        context.stack_push(ForthicValue::Bool(result));
+        Ok(())
+    }
+
+    /// RE-MATCH: ( string pattern -- match ) — array [full, g1, g2, ...]
+    /// with NULL for non-participating groups; NULL on no match (and on a
+    /// NULL input string — ts pushes false there, an implementation
+    /// accident; both are falsy, one spelling is cleaner)
+    fn word_re_match(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let result = match Self::pop_two_strings(context)? {
+            Some((s, pattern)) => match Self::compile(&pattern)?.captures(&s) {
+                Some(caps) => ForthicValue::Array(
+                    (0..caps.len())
+                        .map(|i| {
+                            caps.get(i)
+                                .map(|m| ForthicValue::String(m.as_str().to_string()))
+                                .unwrap_or(ForthicValue::Null)
+                        })
+                        .collect(),
+                ),
+                None => ForthicValue::Null,
+            },
+            None => ForthicValue::Null,
+        };
+        context.stack_push(result);
+        Ok(())
+    }
+
+    /// RE-MATCH-ALL: group 1 when it participated, else the full match
+    /// (the post-fix ts contract)
+    fn word_re_match_all(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let result = match Self::pop_two_strings(context)? {
+            Some((s, pattern)) => {
+                let re = Self::compile(&pattern)?;
+                ForthicValue::Array(
+                    re.captures_iter(&s)
+                        .map(|caps| {
+                            let m = caps.get(1).or_else(|| caps.get(0));
+                            ForthicValue::String(
+                                m.map(|m| m.as_str().to_string()).unwrap_or_default(),
+                            )
+                        })
+                        .collect(),
+                )
+            }
+            None => ForthicValue::Array(vec![]),
+        };
+        context.stack_push(result);
+        Ok(())
+    }
+
+    fn word_re_replace(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let repl = context.stack_pop()?;
+        let pattern = context.stack_pop()?;
+        let value = context.stack_pop()?;
+        let result = match (&value, &pattern) {
+            (ForthicValue::Null, _) => ForthicValue::Null,
+            (_, ForthicValue::Null) => value.clone(),
+            (ForthicValue::String(s), ForthicValue::String(p)) => {
+                let re = Self::compile(p)?;
+                let repl_str = match &repl {
+                    ForthicValue::Null => String::new(),
+                    other => Self::stringify(other),
+                };
+                let normalized = Self::normalize_replacement(&repl_str);
+                ForthicValue::String(re.replace_all(s, normalized.as_str()).to_string())
+            }
+            _ => value.clone(),
+        };
+        context.stack_push(result);
+        Ok(())
+    }
+
+    fn word_lines(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let value = context.stack_pop()?;
+        let result = match value {
+            ForthicValue::String(s) => ForthicValue::Array(
+                // Split on \n exactly; \r\n is NOT normalized (ts parity)
+                s.split('\n')
+                    .map(|l| ForthicValue::String(l.to_string()))
+                    .collect(),
+            ),
+            _ => ForthicValue::Array(vec![]),
+        };
+        context.stack_push(result);
+        Ok(())
+    }
+
+    fn word_unlines(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let value = context.stack_pop()?;
+        let result = match value {
+            ForthicValue::Array(lines) => lines
+                .iter()
+                .map(|l| match l {
+                    ForthicValue::Null => String::new(),
+                    other => Self::stringify(other),
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+            _ => String::new(),
+        };
+        context.stack_push(ForthicValue::String(result));
+        Ok(())
+    }
+
+    /// GREP keeps string elements that match (non-strings dropped);
+    /// GREP-V keeps NON-matching elements INCLUDING non-strings, and a
+    /// non-string pattern filters nothing — deliberate asymmetry (ts)
+    fn word_grep(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let pattern = context.stack_pop()?;
+        let value = context.stack_pop()?;
+        let result = match (&value, &pattern) {
+            (ForthicValue::Array(items), ForthicValue::String(p)) => {
+                let re = Self::compile(p)?;
+                ForthicValue::Array(
+                    items
+                        .iter()
+                        .filter(|v| matches!(v, ForthicValue::String(s) if re.is_match(s)))
+                        .cloned()
+                        .collect(),
+                )
+            }
+            _ => ForthicValue::Array(vec![]),
+        };
+        context.stack_push(result);
+        Ok(())
+    }
+
+    fn word_grep_v(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let pattern = context.stack_pop()?;
+        let value = context.stack_pop()?;
+        let result = match (&value, &pattern) {
+            (ForthicValue::Array(items), ForthicValue::String(p)) => {
+                let re = Self::compile(p)?;
+                ForthicValue::Array(
+                    items
+                        .iter()
+                        .filter(|v| !matches!(v, ForthicValue::String(s) if re.is_match(s)))
+                        .cloned()
+                        .collect(),
+                )
+            }
+            (ForthicValue::Array(_), _) => value.clone(), // -v of nothing filters nothing
+            _ => ForthicValue::Array(vec![]),
+        };
+        context.stack_push(result);
+        Ok(())
+    }
+
+    fn word_sed(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let repl = context.stack_pop()?;
+        let pattern = context.stack_pop()?;
+        let value = context.stack_pop()?;
+        let result = match (&value, &pattern) {
+            (ForthicValue::Array(items), ForthicValue::String(p)) => {
+                let re = Self::compile(p)?;
+                let repl_str = match &repl {
+                    ForthicValue::Null => String::new(),
+                    other => Self::stringify(other),
+                };
+                let normalized = Self::normalize_replacement(&repl_str);
+                ForthicValue::Array(
+                    items
+                        .iter()
+                        .map(|v| match v {
+                            ForthicValue::String(s) => ForthicValue::String(
+                                re.replace_all(s, normalized.as_str()).to_string(),
+                            ),
+                            other => other.clone(), // non-strings pass through
+                        })
+                        .collect(),
+                )
+            }
+            (ForthicValue::Array(_), _) => value.clone(),
+            _ => ForthicValue::Array(vec![]),
+        };
+        context.stack_push(result);
+        Ok(())
+    }
+
+    fn word_cut(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let field_val = context.stack_pop()?;
+        let sep = context.stack_pop()?;
+        let value = context.stack_pop()?;
+
+        let field = match &field_val {
+            ForthicValue::Int(i) => Some(*i),
+            ForthicValue::Float(f) if f.fract() == 0.0 => Some(*f as i64),
+            // ts Number("1") coercion parity
+            ForthicValue::String(s) => s.parse::<i64>().ok(),
+            _ => None,
+        };
+        let result = match (&value, &sep, field) {
+            (ForthicValue::Array(items), ForthicValue::String(sep), Some(field)) if field >= 0 => {
+                ForthicValue::Array(
+                    items
+                        .iter()
+                        .map(|v| match v {
+                            ForthicValue::String(s) => {
+                                // Empty separator splits into chars (JS
+                                // split('') parity; rust split("") yields
+                                // empty bookends)
+                                let parts: Vec<String> = if sep.is_empty() {
+                                    s.chars().map(String::from).collect()
+                                } else {
+                                    s.split(sep.as_str()).map(String::from).collect()
+                                };
+                                parts
+                                    .get(field as usize)
+                                    .map(|p| ForthicValue::String(p.clone()))
+                                    .unwrap_or(ForthicValue::Null)
+                            }
+                            _ => ForthicValue::Null,
+                        })
+                        .collect(),
+                )
+            }
+            _ => ForthicValue::Array(vec![]),
+        };
         context.stack_push(result);
         Ok(())
     }
