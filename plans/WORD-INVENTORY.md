@@ -170,10 +170,33 @@ falsy asymmetry with `0 >DATETIME` = epoch). Also fixed:
 number_to_value now collapses to Int only within the f64-exact range
 (2^53) — beyond that `as i64` silently saturated.
 
-## Present-but-verify list
+## Present-but-verify list: DONE (fix/present-but-verify)
 
-TAKE (rs lacks with_key), OR/AND (verify rs rejects arrays), >BOOL edge
-cases, SLICE allocation bound (#34), MEAN input breadth, @ unknown-variable
-error parity. NEW (Batch 5 spec sweep): rs >DATETIME / AT /
-TIMESTAMP>DATETIME hardcode UTC where ts resolves in the interpreter
-timezone (context_tz helper is right there — cheap fix, unscheduled).
+Verified MATCHING, no change: TAKE (ts's with_key is dead code — reads it,
+never uses it; rs's sane corners on negative-n and scalar input are
+sanctioned), >BOOL (pure JS truthiness incl. truthy empty records — rs
+already agreed), SLICE (same 10M span bound, same message, checked AFTER
+index normalization in both).
+
+Fixed to the ts contract:
+- >DATETIME / AT / TIMESTAMP>DATETIME resolve in the INTERPRETER timezone
+  (were UTC-hardcoded). >DATETIME also gained Float epoch seconds, a Date
+  arm (midnight in tz), and %H:%M / fractional / date-only string forms.
+  Sanctioned divergence: rs reads trailing-Z and explicit-offset strings
+  as the INSTANTS they denote resolved into the interpreter tz — ts nulls
+  Z-strings and silently reinterprets offset wall-clocks (Temporal
+  accidents inconsistent with ts's own >DATE #35 rule).
+- OR/AND are strictly two-operand; an array operand errors toward
+  ANY? / ALL? (the old rs array-collapse form silently changed arity).
+  Two-value results stay truthiness-coerced Bool (ts's raw-operand return
+  is a JS || accident — sanctioned).
+- MEAN implements the full ts polymorphic dispatch: falsy/empty -> 0,
+  truthy non-array as-is, single element as-is (before null filtering),
+  NULL elements skipped, numbers -> mean, strings -> frequency record,
+  records -> field-wise mean (numeric/string sub-dispatch, other fields
+  dropped).
+- @ is a READ-ONLY module-stack fetch; an undeclared variable is a new
+  ForthicError::UnknownVariable (ts UnknownVariableError parity) and the
+  miss creates NOTHING. Only ! and !@ get-or-create. (@ on a non-string
+  operand pushes NULL — ts expects a Variable object there; rs has no such
+  value type. Documented divergence.)

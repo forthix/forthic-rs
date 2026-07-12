@@ -806,6 +806,10 @@ impl CoreModule {
         Ok(())
     }
 
+    /// @: ( varname -- value ) — READ-ONLY fetch across the module stack.
+    /// An undeclared variable is an UnknownVariable ERROR, and the miss
+    /// creates nothing (ts pins both: @ must not mint variables). Only !
+    /// and !@ get-or-create. Declared-but-unset variables read as NULL.
     fn word_fetch(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
         let varname_val = context.stack_pop()?;
 
@@ -820,27 +824,24 @@ impl CoreModule {
                 });
             }
 
-            // Get or create variable
-            let value = {
-                let cur_module = context.cur_module_mut();
-
-                if cur_module.get_variable(&varname).is_none() {
-                    cur_module.add_variable(varname.clone(), ForthicValue::Null);
+            match context.find_variable_value(&varname) {
+                Some(value) => {
+                    context.stack_push(value);
+                    Ok(())
                 }
-
-                // Get value
-                cur_module
-                    .get_variable(&varname)
-                    .map(|var| var.get_value().clone())
-                    .unwrap_or(ForthicValue::Null)
-            };
-
-            context.stack_push(value);
+                None => Err(ForthicError::UnknownVariable {
+                    forthic: "".to_string(),
+                    varname,
+                    location: None,
+                    cause: None,
+                }),
+            }
         } else {
+            // ts treats a non-string operand as a Variable object; rs has
+            // no such value type — documented divergence
             context.stack_push(ForthicValue::Null);
+            Ok(())
         }
-
-        Ok(())
     }
 
     fn word_store_fetch(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
@@ -1012,7 +1013,7 @@ mod tests {
         let mut interp = Interpreter::standard("UTC");
         let rendered = CoreModule::interpolate_string(&mut interp, "v: ${nope}", &opts()).unwrap();
         assert_eq!(rendered, "v: ", "miss renders as null_text (default '')");
-        // ...and the miss created NOTHING (unlike @'s get-or-create)
+        // ...and the miss created NOTHING (only ! / !@ get-or-create)
         assert!(interp.find_variable_value("nope").is_none());
     }
 

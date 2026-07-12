@@ -128,6 +128,17 @@ pub enum ForthicError {
         cause: Option<Box<dyn std::error::Error + Send + Sync>>,
     },
 
+    /// Unknown variable — fetched via @ before being declared or stored
+    /// (ts UnknownVariableError parity; @ never get-or-creates)
+    #[error("Unknown variable: {varname}")]
+    UnknownVariable {
+        forthic: String,
+        varname: String,
+        location: Option<CodeLocation>,
+        #[source]
+        cause: Option<Box<dyn std::error::Error + Send + Sync>>,
+    },
+
     /// Unknown module
     #[error("Unknown module: {module_name}")]
     UnknownModule {
@@ -231,6 +242,7 @@ impl ForthicError {
             | Self::ExtraSemicolon { location, .. }
             | Self::StackUnderflow { location, .. }
             | Self::InvalidVariableName { location, .. }
+            | Self::UnknownVariable { location, .. }
             | Self::UnknownModule { location, .. }
             | Self::InvalidInputPosition { location, .. }
             | Self::InvalidWordName { location, .. }
@@ -263,6 +275,7 @@ impl ForthicError {
             | Self::ExtraSemicolon { forthic, .. }
             | Self::StackUnderflow { forthic, .. }
             | Self::InvalidVariableName { forthic, .. }
+            | Self::UnknownVariable { forthic, .. }
             | Self::UnknownModule { forthic, .. }
             | Self::InvalidInputPosition { forthic, .. }
             | Self::InvalidWordName { forthic, .. }
@@ -291,6 +304,7 @@ impl ForthicError {
             Self::ExtraSemicolon { .. } => "ExtraSemicolon",
             Self::StackUnderflow { .. } => "StackUnderflow",
             Self::InvalidVariableName { .. } => "InvalidVariableName",
+            Self::UnknownVariable { .. } => "UnknownVariable",
             Self::UnknownModule { .. } => "UnknownModule",
             Self::InvalidInputPosition { .. } => "InvalidInputPosition",
             Self::InvalidWordName { .. } => "InvalidWordName",
@@ -311,6 +325,7 @@ impl ForthicError {
             | Self::ExtraSemicolon { forthic, .. }
             | Self::StackUnderflow { forthic, .. }
             | Self::InvalidVariableName { forthic, .. }
+            | Self::UnknownVariable { forthic, .. }
             | Self::UnknownModule { forthic, .. }
             | Self::InvalidInputPosition { forthic, .. }
             | Self::InvalidWordName { forthic, .. }
@@ -331,6 +346,7 @@ impl ForthicError {
             | Self::ExtraSemicolon { location, .. }
             | Self::StackUnderflow { location, .. }
             | Self::InvalidVariableName { location, .. }
+            | Self::UnknownVariable { location, .. }
             | Self::UnknownModule { location, .. }
             | Self::InvalidInputPosition { location, .. }
             | Self::InvalidWordName { location, .. }

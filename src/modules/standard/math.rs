@@ -11,6 +11,7 @@
 use crate::errors::ForthicError;
 use crate::literals::ForthicValue;
 use crate::module::{register_words, InterpreterContext, Module, ModuleWord};
+use indexmap::IndexMap;
 use std::sync::Arc;
 
 /// MathModule provides mathematical operations
@@ -285,28 +286,113 @@ impl MathModule {
         }
     }
 
+    /// MEAN: ( items -- mean ) — polymorphic (ts contract):
+    /// falsy input / empty array -> 0; truthy non-array -> as-is;
+    /// single-element array -> that element as-is (even NULL — this check
+    /// precedes null-filtering); NULL elements are SKIPPED (all-null -> 0);
+    /// then dispatch on the first survivor: numbers -> arithmetic mean,
+    /// strings -> frequency-distribution record, records -> field-wise
+    /// mean over the union of keys (numeric fields mean, string fields
+    /// frequency, other fields dropped); anything else -> 0.
     fn word_mean(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
         let val = context.stack_pop()?;
-
-        if let ForthicValue::Array(arr) = val {
-            if arr.is_empty() {
-                context.stack_push(ForthicValue::Int(0));
-                return Ok(());
-            }
-
-            let numbers: Vec<f64> = arr.iter().filter_map(Self::to_number).collect();
-            if numbers.is_empty() {
-                context.stack_push(ForthicValue::Int(0));
-                return Ok(());
-            }
-
-            let sum: f64 = numbers.iter().sum();
-            let mean = sum / numbers.len() as f64;
-            context.stack_push(Self::number_to_value(mean));
-        } else {
-            context.stack_push(val);
-        }
+        context.stack_push(Self::mean_of(&val));
         Ok(())
+    }
+
+    fn mean_of(val: &ForthicValue) -> ForthicValue {
+        let ForthicValue::Array(arr) = val else {
+            return if val.is_truthy() {
+                val.clone()
+            } else {
+                ForthicValue::Int(0)
+            };
+        };
+        if arr.is_empty() {
+            return ForthicValue::Int(0);
+        }
+        if arr.len() == 1 {
+            return arr[0].clone();
+        }
+        let filtered: Vec<&ForthicValue> = arr
+            .iter()
+            .filter(|v| !matches!(v, ForthicValue::Null))
+            .collect();
+        if filtered.is_empty() {
+            return ForthicValue::Int(0);
+        }
+        match filtered[0] {
+            ForthicValue::Int(_) | ForthicValue::Float(_) => Self::numeric_mean(&filtered),
+            ForthicValue::String(_) => Self::frequency_record(&filtered),
+            ForthicValue::Record(_) => Self::field_wise_mean(&filtered),
+            _ => ForthicValue::Int(0),
+        }
+    }
+
+    /// Sum via to_number (non-numeric stragglers count as 0 — ts's mixed
+    /// arrays are unpinned JS-coercion territory), divide by the FILTERED
+    /// length (ts divides by filtered.length, not the numeric count)
+    fn numeric_mean(values: &[&ForthicValue]) -> ForthicValue {
+        let sum: f64 = values.iter().filter_map(|v| Self::to_number(v)).sum();
+        Self::number_to_value(sum / values.len() as f64)
+    }
+
+    /// ["a" "a" "b"] -> {a: 2/3, b: 1/3}, insertion order of first sighting
+    fn frequency_record(values: &[&ForthicValue]) -> ForthicValue {
+        let mut counts: IndexMap<String, usize> = IndexMap::new();
+        for v in values {
+            let key = match v {
+                ForthicValue::String(s) => s.clone(),
+                other => crate::modules::standard::string::StringModule::stringify(other),
+            };
+            *counts.entry(key).or_insert(0) += 1;
+        }
+        let len = values.len() as f64;
+        ForthicValue::Record(
+            counts
+                .into_iter()
+                .map(|(k, count)| (k, Self::number_to_value(count as f64 / len)))
+                .collect(),
+        )
+    }
+
+    fn field_wise_mean(values: &[&ForthicValue]) -> ForthicValue {
+        // Union of keys in first-sighting order (non-record elements
+        // contribute nothing, mirroring ts's undefined-field filtering)
+        let mut keys: Vec<&String> = Vec::new();
+        for v in values {
+            if let ForthicValue::Record(rec) = v {
+                for k in rec.keys() {
+                    if !keys.contains(&k) {
+                        keys.push(k);
+                    }
+                }
+            }
+        }
+        let mut result = IndexMap::new();
+        for key in keys {
+            let field_values: Vec<&ForthicValue> = values
+                .iter()
+                .filter_map(|v| match v {
+                    ForthicValue::Record(rec) => rec.get(key),
+                    _ => None,
+                })
+                .filter(|v| !matches!(v, ForthicValue::Null))
+                .collect();
+            let Some(first) = field_values.first() else {
+                continue; // all-null/missing field: dropped
+            };
+            match first {
+                ForthicValue::Int(_) | ForthicValue::Float(_) => {
+                    result.insert(key.clone(), Self::numeric_mean(&field_values));
+                }
+                ForthicValue::String(_) => {
+                    result.insert(key.clone(), Self::frequency_record(&field_values));
+                }
+                _ => {} // other field types dropped (ts contract)
+            }
+        }
+        ForthicValue::Record(result)
     }
 
     // ===== Conversion Operations =====

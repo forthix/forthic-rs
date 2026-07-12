@@ -130,19 +130,20 @@ fn test_or_two_values() {
 }
 
 #[test]
-fn test_or_array() {
+fn test_or_array_is_an_error_pointing_at_any_q() {
+    // The old array-collapse form silently changed arity; ts errors (and
+    // rs now matches): arrays belong to ANY?
     let module = BooleanModule::new();
     let mut ctx = MockContext::new();
 
     let word = module.module().find_word("OR").unwrap();
+    ctx.stack.push(ForthicValue::Bool(false));
     ctx.stack.push(ForthicValue::Array(vec![
         ForthicValue::Bool(false),
         ForthicValue::Bool(true),
-        ForthicValue::Bool(false),
     ]));
-    word.execute(&mut ctx).unwrap();
-
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::Bool(true)));
+    let err = word.execute(&mut ctx).unwrap_err();
+    assert!(err.to_string().contains("ANY?"), "got: {err}");
 }
 
 #[test]
@@ -159,19 +160,18 @@ fn test_and_two_values() {
 }
 
 #[test]
-fn test_and_array() {
+fn test_and_array_is_an_error_pointing_at_all_q() {
     let module = BooleanModule::new();
     let mut ctx = MockContext::new();
 
     let word = module.module().find_word("AND").unwrap();
+    ctx.stack.push(ForthicValue::Bool(true));
     ctx.stack.push(ForthicValue::Array(vec![
         ForthicValue::Bool(true),
         ForthicValue::Bool(true),
-        ForthicValue::Bool(true),
     ]));
-    word.execute(&mut ctx).unwrap();
-
-    assert_eq!(ctx.stack.pop(), Some(ForthicValue::Bool(true)));
+    let err = word.execute(&mut ctx).unwrap_err();
+    assert!(err.to_string().contains("ALL?"), "got: {err}");
 }
 
 #[test]
