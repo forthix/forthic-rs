@@ -52,6 +52,12 @@ impl ForthicJsonRpcServicer {
         }
     }
 
+    /// Register a runtime-specific module: imported into every request
+    /// interpreter and exposed via listModules / getModuleInfo
+    pub fn add_runtime_module(&mut self, module: Module) {
+        self.runtime_modules.push(module);
+    }
+
     /// Names of the registered runtime-specific modules
     pub fn registered_module_names(&self) -> Vec<String> {
         self.runtime_modules
@@ -175,10 +181,19 @@ impl ForthicJsonRpcServicer {
             .exportable_words()
             .iter()
             .map(|w| {
+                // Real word metadata when the word carries it (item 22);
+                // placeholder shape only for doc-less direct registrations
+                let (stack_effect, description) = match w.doc() {
+                    Some(doc) => (doc.stack_effect.to_string(), doc.description.to_string()),
+                    None => (
+                        "( -- )".to_string(),
+                        format!("{} word from {} module", w.name(), module_name),
+                    ),
+                };
                 json!({
                     "name": w.name(),
-                    "stack_effect": "( -- )",
-                    "description": format!("{} word from {} module", w.name(), module_name),
+                    "stack_effect": stack_effect,
+                    "description": description,
                 })
             })
             .collect();
