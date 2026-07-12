@@ -5,7 +5,7 @@
 //! ## Categories
 //! - Comparison: ==, !=, <, <=, >, >=
 //! - Logic: OR, AND, NOT, XOR, NAND
-//! - Membership: IN, ANY, ALL
+//! - Membership: CONTAINS?, ANY, ALL, ANY?, ALL?
 //! - Conversion: >BOOL
 
 use crate::errors::ForthicError;
@@ -255,8 +255,20 @@ impl BooleanModule {
     // ===== Membership Operations =====
 
     fn register_membership_words(module: &mut Module) {
-        // IN
-        let word = Arc::new(ModuleWord::new("IN".to_string(), Self::word_in));
+        // CONTAINS? (haystack-first; replaces the classic item-first IN,
+        // dropped per the no-aliases decision)
+        let word = Arc::new(ModuleWord::new(
+            "CONTAINS?".to_string(),
+            Self::word_contains_q,
+        ));
+        module.add_exportable_word(word);
+
+        // ANY?
+        let word = Arc::new(ModuleWord::new("ANY?".to_string(), Self::word_any_q));
+        module.add_exportable_word(word);
+
+        // ALL?
+        let word = Arc::new(ModuleWord::new("ALL?".to_string(), Self::word_all_q));
         module.add_exportable_word(word);
 
         // ANY
@@ -268,17 +280,51 @@ impl BooleanModule {
         module.add_exportable_word(word);
     }
 
-    fn word_in(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
-        let array = context.stack_pop()?;
-        let item = context.stack_pop()?;
-
-        if let ForthicValue::Array(arr) = array {
-            let result = arr.iter().any(|val| Self::values_equal(val, &item));
-            context.stack_push(ForthicValue::Bool(result));
-        } else {
-            context.stack_push(ForthicValue::Bool(false));
-        }
+    /// CONTAINS?: ( haystack:any[] needle -- bool ) — container-first arg
+    /// order (ts canonical; classic IN was item-first). Non-array haystack
+    /// is false, not an error. Membership uses values_equal (structural);
+    /// ts .includes is === — identical for scalars, a documented corner
+    /// for records.
+    fn word_contains_q(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let needle = context.stack_pop()?;
+        let haystack = context.stack_pop()?;
+        let result = match haystack {
+            ForthicValue::Array(arr) => arr.iter().any(|v| Self::values_equal(v, &needle)),
+            _ => false,
+        };
+        context.stack_push(ForthicValue::Bool(result));
         Ok(())
+    }
+
+    /// ANY?: ( bools:any[] -- bool ) — any element truthy; false on empty
+    fn word_any_q(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let items = Self::require_array(context, "ANY?")?;
+        let result = items.iter().any(Self::is_truthy);
+        context.stack_push(ForthicValue::Bool(result));
+        Ok(())
+    }
+
+    /// ALL?: ( bools:any[] -- bool ) — all elements truthy; true on empty
+    fn word_all_q(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let items = Self::require_array(context, "ALL?")?;
+        let result = items.iter().all(Self::is_truthy);
+        context.stack_push(ForthicValue::Bool(result));
+        Ok(())
+    }
+
+    fn require_array(
+        context: &mut dyn InterpreterContext,
+        word: &str,
+    ) -> Result<Vec<ForthicValue>, ForthicError> {
+        match context.stack_pop()? {
+            ForthicValue::Array(arr) => Ok(arr),
+            other => Err(ForthicError::InvalidOperation {
+                forthic: String::new(),
+                message: format!("{word} requires an array of booleans (got {other:?})"),
+                location: None,
+                cause: None,
+            }),
+        }
     }
 
     fn word_any(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
@@ -386,15 +432,10 @@ impl BooleanModule {
 
     /// Check if a value is truthy (JavaScript-style truthiness)
     fn is_truthy(val: &ForthicValue) -> bool {
-        match val {
-            ForthicValue::Null => false,
-            ForthicValue::Bool(b) => *b,
-            ForthicValue::Int(i) => *i != 0,
-            ForthicValue::Float(f) => *f != 0.0,
-            ForthicValue::String(s) => !s.is_empty(),
-            ForthicValue::Array(a) => !a.is_empty(),
-            _ => true,
-        }
+        // JS truthiness lives on ForthicValue (shared with IF/WHEN in core).
+        // Note two fixes vs the old local copy: empty arrays are TRUTHY
+        // (JS Boolean([]) === true) and NaN is falsy.
+        val.is_truthy()
     }
 }
 

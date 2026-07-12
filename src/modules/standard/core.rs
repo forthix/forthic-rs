@@ -5,7 +5,10 @@
 // ## Categories
 // - Stack: DROP, DUP, SWAP
 // - Variables: VARIABLES, !, @, !@
-// - Control: NOP, NULL, ARRAY?, DEFAULT
+// - Control: NOP, NULL, ARRAY?, DEFAULT, DEFAULT-RUN, IF, IF-RUN, WHEN
+// - Execution: RUN
+// - Predicates: NULL?, EMPTY?, STRING?, NUMBER?, RECORD?
+// - Debug: PEEK!, STACK!
 // - Errors: TRY, OK?, ERROR?, UNWRAP, UNWRAP-OR (Rust Result semantics:
 //   'CODE' TRY UNWRAP is CODE — mirrored with forthic-ts)
 // - Options: ~> (converts array to WordOptions)
@@ -54,9 +57,228 @@ impl CoreModule {
         Self::register_variable_words(&mut module);
         Self::register_control_words(&mut module);
         Self::register_error_words(&mut module);
+        Self::register_flow_words(&mut module);
+        Self::register_predicate_words(&mut module);
+        Self::register_debug_words(&mut module);
         Self::register_options_words(&mut module);
 
         Self { module }
+    }
+
+    // ===== Control Flow & Execution =====
+
+    fn register_flow_words(module: &mut Module) {
+        for (name, handler) in [
+            (
+                "RUN",
+                Self::word_run as fn(&mut dyn InterpreterContext) -> Result<(), ForthicError>,
+            ),
+            ("IF", Self::word_if),
+            ("IF-RUN", Self::word_if_run),
+            ("WHEN", Self::word_when),
+            ("DEFAULT-RUN", Self::word_default_run),
+        ] {
+            let word = Arc::new(ModuleWord::new(name.to_string(), handler));
+            module.add_exportable_word(word);
+        }
+    }
+
+    fn pop_forthic(
+        context: &mut dyn InterpreterContext,
+        word: &str,
+    ) -> Result<Option<String>, ForthicError> {
+        match context.stack_pop()? {
+            ForthicValue::String(s) => Ok(Some(s)),
+            ForthicValue::Null => Ok(None),
+            other => Err(ForthicError::InvalidOperation {
+                forthic: String::new(),
+                message: format!("{word} requires a Forthic string, got {other:?}"),
+                location: None,
+                cause: None,
+            }),
+        }
+    }
+
+    /// RUN: ( forthic -- ? ) — run a Forthic string in the current context;
+    /// whatever it produces stays on the stack
+    fn word_run(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        if let Some(forthic) = Self::pop_forthic(context, "RUN")? {
+            if !forthic.is_empty() {
+                context.run(&forthic)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// IF: ( bool then_value else_value -- chosen ) — PURE VALUE SELECTION
+    /// (post-scrub ts contract: IF does not execute anything; for lazy code
+    /// execution use IF-RUN)
+    fn word_if(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let else_value = context.stack_pop()?;
+        let then_value = context.stack_pop()?;
+        let bool_val = context.stack_pop()?;
+        context.stack_push(if bool_val.is_truthy() {
+            then_value
+        } else {
+            else_value
+        });
+        Ok(())
+    }
+
+    /// IF-RUN: ( bool then_forthic else_forthic -- ? ) — conditional code
+    /// execution; both branches are Forthic strings (NULL = do nothing)
+    fn word_if_run(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let else_forthic = Self::pop_forthic(context, "IF-RUN")?;
+        let then_forthic = Self::pop_forthic(context, "IF-RUN")?;
+        let bool_val = context.stack_pop()?;
+        let branch = if bool_val.is_truthy() {
+            then_forthic
+        } else {
+            else_forthic
+        };
+        if let Some(forthic) = branch {
+            if !forthic.is_empty() {
+                context.run(&forthic)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// WHEN: ( bool forthic -- ? ) — one-sided: run the code if truthy
+    fn word_when(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let forthic = Self::pop_forthic(context, "WHEN")?;
+        let bool_val = context.stack_pop()?;
+        if bool_val.is_truthy() {
+            if let Some(forthic) = forthic {
+                if !forthic.is_empty() {
+                    context.run(&forthic)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// DEFAULT-RUN: ( value forthic -- result ) — lazy default: the forthic
+    /// only runs when value is NULL or "" (its result replaces the value)
+    fn word_default_run(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let forthic = Self::pop_forthic(context, "DEFAULT-RUN")?;
+        let value = context.stack_pop()?;
+        let is_empty = matches!(&value, ForthicValue::Null)
+            || matches!(&value, ForthicValue::String(s) if s.is_empty());
+        if is_empty {
+            if let Some(forthic) = forthic {
+                context.run(&forthic)?;
+                let result = context.stack_pop()?;
+                context.stack_push(result);
+                return Ok(());
+            }
+            context.stack_push(ForthicValue::Null);
+        } else {
+            context.stack_push(value);
+        }
+        Ok(())
+    }
+
+    // ===== Predicates =====
+
+    fn register_predicate_words(module: &mut Module) {
+        for (name, handler) in [
+            (
+                "NULL?",
+                Self::word_null_q as fn(&mut dyn InterpreterContext) -> Result<(), ForthicError>,
+            ),
+            ("EMPTY?", Self::word_empty_q),
+            ("STRING?", Self::word_string_q),
+            ("NUMBER?", Self::word_number_q),
+            ("RECORD?", Self::word_record_q),
+        ] {
+            let word = Arc::new(ModuleWord::new(name.to_string(), handler));
+            module.add_exportable_word(word);
+        }
+    }
+
+    fn word_null_q(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let value = context.stack_pop()?;
+        context.stack_push(ForthicValue::Bool(value.is_null()));
+        Ok(())
+    }
+
+    /// EMPTY?: null, "", or a container with no entries
+    fn word_empty_q(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let value = context.stack_pop()?;
+        let empty = match &value {
+            ForthicValue::Null => true,
+            ForthicValue::String(s) => s.is_empty(),
+            ForthicValue::Array(a) => a.is_empty(),
+            ForthicValue::Record(r) => r.is_empty(),
+            _ => false,
+        };
+        context.stack_push(ForthicValue::Bool(empty));
+        Ok(())
+    }
+
+    fn word_string_q(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let value = context.stack_pop()?;
+        context.stack_push(ForthicValue::Bool(matches!(value, ForthicValue::String(_))));
+        Ok(())
+    }
+
+    /// NUMBER?: Infinity is a number; NaN is not (ts #31 contract)
+    fn word_number_q(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let value = context.stack_pop()?;
+        let is_number = match value {
+            ForthicValue::Int(_) => true,
+            ForthicValue::Float(f) => !f.is_nan(),
+            _ => false,
+        };
+        context.stack_push(ForthicValue::Bool(is_number));
+        Ok(())
+    }
+
+    fn word_record_q(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let value = context.stack_pop()?;
+        context.stack_push(ForthicValue::Bool(matches!(value, ForthicValue::Record(_))));
+        Ok(())
+    }
+
+    // ===== Debug =====
+
+    fn register_debug_words(module: &mut Module) {
+        let word = Arc::new(ModuleWord::new("PEEK!".to_string(), Self::word_peek_bang));
+        module.add_exportable_word(word);
+        let word = Arc::new(ModuleWord::new("STACK!".to_string(), Self::word_stack_bang));
+        module.add_exportable_word(word);
+    }
+
+    /// PEEK!: print top of stack and intentionally stop execution
+    fn word_peek_bang(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        match context.stack_peek() {
+            Some(value) => println!(
+                "{}",
+                crate::modules::standard::json::JSONModule::forthic_to_json(value)
+            ),
+            None => println!("<STACK EMPTY>"),
+        }
+        Err(ForthicError::IntentionalStop {
+            message: "PEEK!".to_string(),
+        })
+    }
+
+    /// STACK!: print the whole stack (top first) as pretty JSON and stop
+    fn word_stack_bang(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let mut items = context.stack_snapshot();
+        items.reverse();
+        let json: Vec<_> = items
+            .iter()
+            .map(crate::modules::standard::json::JSONModule::forthic_to_json)
+            .collect();
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&json).unwrap_or_else(|_| "<UNPRINTABLE>".to_string())
+        );
+        Err(ForthicError::IntentionalStop {
+            message: "STACK!".to_string(),
+        })
     }
 
     // ===== Error Handling (Rust Result semantics; see backlog item 20) =====

@@ -44,6 +44,22 @@ impl ForthicValue {
         matches!(self, ForthicValue::Null)
     }
 
+    /// JS-style truthiness (the cross-runtime contract for IF, WHEN, ANY?,
+    /// ALL?, >BOOL): null/false/0/NaN/"" are falsy; EVERYTHING else is
+    /// truthy — including empty arrays and records, exactly like JS
+    /// Boolean([]) === true
+    pub fn is_truthy(&self) -> bool {
+        match self {
+            ForthicValue::Null => false,
+            ForthicValue::Bool(b) => *b,
+            ForthicValue::Int(i) => *i != 0,
+            // JS: Boolean(NaN) === false
+            ForthicValue::Float(f) => *f != 0.0 && !f.is_nan(),
+            ForthicValue::String(s) => !s.is_empty(),
+            _ => true,
+        }
+    }
+
     /// Convert to string if possible
     pub fn as_string(&self) -> Option<&str> {
         match self {

@@ -202,17 +202,18 @@ fn test_xor() {
 // Membership Tests
 
 #[test]
-fn test_in() {
+fn test_contains_q() {
+    // CONTAINS? is haystack-first (the classic item-first IN is dropped)
     let module = BooleanModule::new();
     let mut ctx = MockContext::new();
 
-    let word = module.module().find_word("IN").unwrap();
-    ctx.stack.push(ForthicValue::Int(2));
+    let word = module.module().find_word("CONTAINS?").unwrap();
     ctx.stack.push(ForthicValue::Array(vec![
         ForthicValue::Int(1),
         ForthicValue::Int(2),
         ForthicValue::Int(3),
     ]));
+    ctx.stack.push(ForthicValue::Int(2));
     word.execute(&mut ctx).unwrap();
 
     assert_eq!(ctx.stack.pop(), Some(ForthicValue::Bool(true)));

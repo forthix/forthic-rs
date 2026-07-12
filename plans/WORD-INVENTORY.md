@@ -56,11 +56,14 @@ FLATTEN full-depth default + depth option + records as tab-joined key
 paths. (ts TAKE's with_key turned out to be declared-but-dead in ts —
 nothing to port.)
 
-**Batch 1 — control flow & predicates:**
-IF (pure value selection — does NOT execute branches), IF-RUN, WHEN, RUN,
-DEFAULT-RUN, NULL?, EMPTY?, STRING?, NUMBER? (Infinity yes, NaN no),
-RECORD?, ANY? (false on empty), ALL? (true on empty), CONTAINS?
-(haystack-first), PRINT, PEEK!, STACK! (need IntentionalStop printing).
+**Batch 1 — control flow & predicates: DONE (feat/word-batch1):**
+IF (pure value selection), IF-RUN, WHEN, RUN, DEFAULT-RUN, NULL?, EMPTY?,
+STRING?, NUMBER? (Infinity yes, NaN no), RECORD?, ANY? (false on empty),
+ALL? (true on empty), CONTAINS? (haystack-first; classic IN dropped),
+PEEK!, STACK!. Bonus: is_truthy moved to ForthicValue with two JS-parity
+fixes (empty arrays are truthy, NaN is falsy — affects >BOOL/IF/ANY?).
+PRINT + core INTERPOLATE deferred to Batch 4: they share the
+variable-interpolation machinery with string INTERPOLATE.
 
 **Batch 2 — higher-order & sorting:**
 FILTER, FOREACH (no push_error — 'W' TRY FOREACH per #38), REDUCE, FIND,
