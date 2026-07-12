@@ -7,12 +7,14 @@
 // - Conversion to: >TIME, >DATE, >DATETIME, AT
 // - Conversion from: TIME>STR, DATE>STR, DATE>INT
 // - Timestamps: >TIMESTAMP, TIMESTAMP>DATETIME
-// - Date math: ADD-DAYS, SUBTRACT-DATES
+// - Date math: ADD-DAYS, DAYS-BETWEEN
+// - Components: YEAR, MONTH (1-based), DAY-OF-WEEK (ISO 1=Mon)
+// - Meridiem: AM, PM
 
 use crate::errors::ForthicError;
 use crate::literals::ForthicValue;
-use crate::module::{InterpreterContext, Module, ModuleWord};
-use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveTime, TimeZone, Utc};
+use crate::module::{register_words, InterpreterContext, Module, ModuleWord};
+use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveTime, TimeZone, Timelike, Utc};
 use std::sync::Arc;
 
 /// DateTimeModule provides date and time operations
@@ -31,6 +33,8 @@ impl DateTimeModule {
         Self::register_conversion_from_words(&mut module);
         Self::register_timestamp_words(&mut module);
         Self::register_date_math_words(&mut module);
+        Self::register_meridiem_words(&mut module);
+        Self::register_component_words(&mut module);
 
         Self { module }
     }
@@ -118,24 +122,61 @@ impl DateTimeModule {
         Ok(())
     }
 
+    /// >DATE: ( value -- date ) — ts #35 contract:
+    /// - Date passes through; DateTime takes its OWN timezone's calendar
+    ///   date
+    /// - ISO date strings, and ISO datetime strings with NO zone or with
+    ///   an explicit numeric OFFSET, take the date AS WRITTEN
+    /// - a trailing-Z instant resolves in the INTERPRETER's timezone
+    ///   (never the host's)
+    /// - "Oct 21, 2020"-style month names parse; ts's arbitrary
+    ///   new Date() leniency beyond that is NOT reproduced (sanctioned
+    ///   strict-parsing divergence)
+    /// - anything unparseable (and any non-date/-string value) is NULL
     fn word_to_date(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
         let val = context.stack_pop()?;
 
         let result = match val {
             ForthicValue::Date(d) => ForthicValue::Date(d),
-            ForthicValue::DateTime(dt) => ForthicValue::Date(dt.naive_local().date()),
-            ForthicValue::String(s) => {
-                // Try to parse date string (YYYY-MM-DD)
-                match NaiveDate::parse_from_str(&s, "%Y-%m-%d") {
-                    Ok(date) => ForthicValue::Date(date),
-                    Err(_) => ForthicValue::Null,
-                }
-            }
+            ForthicValue::DateTime(dt) => ForthicValue::Date(dt.date_naive()),
+            ForthicValue::String(s) => Self::parse_date_string(s.trim(), Self::context_tz(context))
+                .map(ForthicValue::Date)
+                .unwrap_or(ForthicValue::Null),
             _ => ForthicValue::Null,
         };
 
         context.stack_push(result);
         Ok(())
+    }
+
+    fn parse_date_string(s: &str, tz: chrono_tz::Tz) -> Option<NaiveDate> {
+        // ISO date as written
+        if let Ok(d) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+            return Some(d);
+        }
+        // ISO datetime without zone: date as written
+        for fmt in ["%Y-%m-%dT%H:%M:%S%.f", "%Y-%m-%dT%H:%M"] {
+            if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(s, fmt) {
+                return Some(ndt.date());
+            }
+        }
+        // ISO datetime with a zone: a trailing-Z INSTANT resolves in the
+        // interpreter timezone (the #35 rule); an explicit numeric offset
+        // takes the date as written (offset ignored — ts PlainDate.from)
+        if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
+            return if s.ends_with('Z') || s.ends_with('z') {
+                Some(dt.with_timezone(&tz).date_naive())
+            } else {
+                Some(dt.naive_local().date())
+            };
+        }
+        // Month-name forms ("Oct 21, 2020" is test-pinned in ts)
+        for fmt in ["%b %d, %Y", "%B %d, %Y"] {
+            if let Ok(d) = NaiveDate::parse_from_str(s, fmt) {
+                return Some(d);
+            }
+        }
+        None
     }
 
     fn word_to_datetime(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
@@ -310,10 +351,10 @@ impl DateTimeModule {
         let word = Arc::new(ModuleWord::new("ADD-DAYS".to_string(), Self::word_add_days));
         module.add_exportable_word(word);
 
-        // SUBTRACT-DATES
+        // DAYS-BETWEEN
         let word = Arc::new(ModuleWord::new(
-            "SUBTRACT-DATES".to_string(),
-            Self::word_subtract_dates,
+            "DAYS-BETWEEN".to_string(),
+            Self::word_days_between,
         ));
         module.add_exportable_word(word);
     }
@@ -337,18 +378,133 @@ impl DateTimeModule {
         Ok(())
     }
 
-    fn word_subtract_dates(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+    /// DAYS-BETWEEN: ( date1 date2 -- date1 - date2 in days ) — replaces
+    /// classic SUBTRACT-DATES with IDENTICAL semantics (same sign
+    /// convention: the top of stack is subtracted from the value beneath).
+    /// DateTime operands use their own-timezone calendar date; anything
+    /// else is NULL.
+    fn word_days_between(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
         let date2 = context.stack_pop()?;
         let date1 = context.stack_pop()?;
 
-        let result = match (date1, date2) {
-            (ForthicValue::Date(d1), ForthicValue::Date(d2)) => {
-                let duration = d1.signed_duration_since(d2);
-                ForthicValue::Int(duration.num_days())
-            }
+        let result = match (
+            Self::as_calendar_date(&date1),
+            Self::as_calendar_date(&date2),
+        ) {
+            (Some(d1), Some(d2)) => ForthicValue::Int(d1.signed_duration_since(d2).num_days()),
             _ => ForthicValue::Null,
         };
 
+        context.stack_push(result);
+        Ok(())
+    }
+
+    /// The calendar date of a Date or DateTime (in the DateTime's own
+    /// timezone — mirrors ts duck typing on .year)
+    fn as_calendar_date(val: &ForthicValue) -> Option<NaiveDate> {
+        match val {
+            ForthicValue::Date(d) => Some(*d),
+            ForthicValue::DateTime(dt) => Some(dt.date_naive()),
+            _ => None,
+        }
+    }
+
+    // ===== Meridiem Operations =====
+
+    fn register_meridiem_words(module: &mut Module) {
+        register_words!(module, {
+            "AM" => Self::word_am,
+            "PM" => Self::word_pm,
+        });
+    }
+
+    /// AM: ( time -- time ) — force into the morning: hour >= 12 loses 12
+    /// (14:30 -> 02:30, 12:00 -> 00:00). Works on Time and DateTime (ts
+    /// duck-types on .hour); anything else passes through UNCHANGED (not
+    /// NULL — ts returns the input itself).
+    fn word_am(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let val = context.stack_pop()?;
+        context.stack_push(Self::with_meridiem(val, false));
+        Ok(())
+    }
+
+    /// PM: ( time -- time ) — force into the afternoon: hour < 12 gains 12
+    /// (09:15 -> 21:15, 00:00 -> 12:00). Same pass-through rule as AM.
+    fn word_pm(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let val = context.stack_pop()?;
+        context.stack_push(Self::with_meridiem(val, true));
+        Ok(())
+    }
+
+    fn with_meridiem(val: ForthicValue, pm: bool) -> ForthicValue {
+        // .then (lazy), not .then_some — hour - 12 must not be evaluated
+        // when hour < 12 (u32 underflow)
+        let adjust = |hour: u32| -> Option<u32> {
+            if pm {
+                (hour < 12).then(|| hour + 12)
+            } else {
+                (hour >= 12).then(|| hour - 12)
+            }
+        };
+        match val {
+            ForthicValue::Time(t) => match adjust(t.hour()) {
+                Some(h) => ForthicValue::Time(t.with_hour(h).unwrap_or(t)),
+                None => ForthicValue::Time(t),
+            },
+            ForthicValue::DateTime(dt) => match adjust(dt.hour()) {
+                Some(h) => ForthicValue::DateTime(dt.with_hour(h).unwrap_or(dt)),
+                None => ForthicValue::DateTime(dt),
+            },
+            other => other, // pass through unchanged
+        }
+    }
+
+    // ===== Date Components =====
+
+    fn register_component_words(module: &mut Module) {
+        register_words!(module, {
+            "YEAR" => Self::word_year,
+            "MONTH" => Self::word_month,
+            "DAY-OF-WEEK" => Self::word_day_of_week,
+        });
+    }
+
+    /// YEAR: ( date -- year ) — Date or DateTime; anything else NULL
+    fn word_year(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let val = context.stack_pop()?;
+        let result = match &val {
+            ForthicValue::Date(d) => ForthicValue::Int(d.year() as i64),
+            ForthicValue::DateTime(dt) => ForthicValue::Int(dt.year() as i64),
+            _ => ForthicValue::Null,
+        };
+        context.stack_push(result);
+        Ok(())
+    }
+
+    /// MONTH: ( date -- month ) — 1-based (1=January), matching both
+    /// Temporal .month and chrono .month()
+    fn word_month(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let val = context.stack_pop()?;
+        let result = match &val {
+            ForthicValue::Date(d) => ForthicValue::Int(d.month() as i64),
+            ForthicValue::DateTime(dt) => ForthicValue::Int(dt.month() as i64),
+            _ => ForthicValue::Null,
+        };
+        context.stack_push(result);
+        Ok(())
+    }
+
+    /// DAY-OF-WEEK: ( date -- day ) — ISO 8601: 1=Monday .. 7=Sunday
+    /// (number_from_monday, NOT the 0-based num_days_from_monday)
+    fn word_day_of_week(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let val = context.stack_pop()?;
+        let result = match &val {
+            ForthicValue::Date(d) => ForthicValue::Int(d.weekday().number_from_monday() as i64),
+            ForthicValue::DateTime(dt) => {
+                ForthicValue::Int(dt.weekday().number_from_monday() as i64)
+            }
+            _ => ForthicValue::Null,
+        };
         context.stack_push(result);
         Ok(())
     }

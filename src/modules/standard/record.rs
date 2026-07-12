@@ -26,7 +26,8 @@ impl RecordModule {
 
         // Register all words
         Self::register_core_words(&mut module);
-        Self::register_batch3_words(&mut module);
+        Self::register_jq_words(&mut module);
+        Self::register_shaping_words(&mut module);
         Self::register_transform_words(&mut module);
         Self::register_access_words(&mut module);
 
@@ -45,11 +46,18 @@ impl RecordModule {
 
     // ===== Core Operations =====
 
-    fn register_batch3_words(module: &mut Module) {
+    // JQ-style path access (paths are DATA, never interpolated source)
+    fn register_jq_words(module: &mut Module) {
         register_words!(module, {
             "JQ@" => Self::word_jq_at,
             "JQ!" => Self::word_jq_set,
             "JQ-DEL" => Self::word_jq_del,
+        });
+    }
+
+    // Reshaping: merge/select/drop keys, entry conversions
+    fn register_shaping_words(module: &mut Module) {
+        register_words!(module, {
             "MERGE" => Self::word_merge,
             "PICK" => Self::word_pick,
             "OMIT" => Self::word_omit,

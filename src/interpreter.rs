@@ -1064,6 +1064,15 @@ impl InterpreterContext for Interpreter {
             .find_map(|m| m.get_variable(name).map(|v| v.get_value().clone()))
     }
 
+    fn use_module(&mut self, name: &str, prefix: &str) -> Result<(), ForthicError> {
+        let module = self.find_module(name)?.clone();
+        // Import into both the app module and its live module_stack clone —
+        // the same dual-target invariant as register_module/import_module
+        self.app_module.import_module(prefix, &module);
+        self.module_stack[0].import_module(prefix, &module);
+        Ok(())
+    }
+
     fn stack_pop(&mut self) -> Result<ForthicValue, ForthicError> {
         self.stack.pop()
     }

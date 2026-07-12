@@ -4,13 +4,13 @@
 //!
 //! ## Categories
 //! - Arithmetic: +, -, *, /, MOD
-//! - Aggregates: MEAN, MAX, MIN, SUM
-//! - Type conversion: >INT, >FLOAT, ROUND, FLOOR, CEIL
-//! - Math functions: ABS
+//! - Aggregates: MEAN, MAX, MIN, SUM, PRODUCT
+//! - Type conversion: >INT, >FLOAT, ROUND, FLOOR, CEIL, FORMAT-FIXED
+//! - Math functions: ABS, SQRT, CLAMP
 
 use crate::errors::ForthicError;
 use crate::literals::ForthicValue;
-use crate::module::{InterpreterContext, Module, ModuleWord};
+use crate::module::{register_words, InterpreterContext, Module, ModuleWord};
 use std::sync::Arc;
 
 /// MathModule provides mathematical operations
@@ -177,6 +177,10 @@ impl MathModule {
     // ===== Aggregate Operations =====
 
     fn register_aggregate_words(module: &mut Module) {
+        register_words!(module, {
+            "PRODUCT" => Self::word_product,
+        });
+
         // SUM
         let word = Arc::new(ModuleWord::new("SUM".to_string(), Self::word_sum));
         module.add_exportable_word(word);
@@ -308,6 +312,10 @@ impl MathModule {
     // ===== Conversion Operations =====
 
     fn register_conversion_words(module: &mut Module) {
+        register_words!(module, {
+            "FORMAT-FIXED" => Self::word_format_fixed,
+        });
+
         // >INT
         let word = Arc::new(ModuleWord::new(">INT".to_string(), Self::word_to_int));
         module.add_exportable_word(word);
@@ -383,6 +391,11 @@ impl MathModule {
     // ===== Math Functions =====
 
     fn register_math_functions(module: &mut Module) {
+        register_words!(module, {
+            "SQRT" => Self::word_sqrt,
+            "CLAMP" => Self::word_clamp,
+        });
+
         // ABS
         let word = Arc::new(ModuleWord::new("ABS".to_string(), Self::word_abs));
         module.add_exportable_word(word);
@@ -441,6 +454,140 @@ impl MathModule {
         }
     }
 
+    /// PRODUCT: ( array -- product ) — empty array is 1. Deliberate ts
+    /// asymmetry with SUM: non-array input is NULL (SUM says 0), and a
+    /// NULL/non-numeric element nulls the WHOLE result (SUM skips them).
+    fn word_product(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let val = context.stack_pop()?;
+        let result = match val {
+            ForthicValue::Array(arr) => {
+                let mut product = 1.0f64;
+                let mut all_numeric = true;
+                for v in &arr {
+                    match Self::to_number(v) {
+                        Some(n) => product *= n,
+                        None => {
+                            all_numeric = false;
+                            break;
+                        }
+                    }
+                }
+                if all_numeric {
+                    Self::number_to_value(product)
+                } else {
+                    ForthicValue::Null
+                }
+            }
+            _ => ForthicValue::Null,
+        };
+        context.stack_push(result);
+        Ok(())
+    }
+
+    /// SQRT: ( n -- sqrt ) — negative input is NaN (JS Math.sqrt), not an
+    /// error; NULL/non-numeric is NULL
+    fn word_sqrt(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let val = context.stack_pop()?;
+        let result = match Self::to_number(&val) {
+            Some(n) => Self::number_to_value(n.sqrt()),
+            None => ForthicValue::Null,
+        };
+        context.stack_push(result);
+        Ok(())
+    }
+
+    /// CLAMP: ( value min max -- clamped ) — exactly JS
+    /// Math.max(min, Math.min(max, value)), so when min > max, MIN WINS
+    /// (ts contract; don't "fix"). Any NULL operand is NULL.
+    fn word_clamp(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let max = context.stack_pop()?;
+        let min = context.stack_pop()?;
+        let value = context.stack_pop()?;
+        let result = match (
+            Self::to_number(&value),
+            Self::to_number(&min),
+            Self::to_number(&max),
+        ) {
+            (Some(v), Some(lo), Some(hi)) => {
+                // JS Math.min/max PROPAGATE NaN; rust f64::min/max swallow
+                // it — check explicitly
+                if v.is_nan() || lo.is_nan() || hi.is_nan() {
+                    ForthicValue::Float(f64::NAN)
+                } else {
+                    Self::number_to_value(lo.max(hi.min(v)))
+                }
+            }
+            _ => ForthicValue::Null,
+        };
+        context.stack_push(result);
+        Ok(())
+    }
+
+    /// FORMAT-FIXED: ( num digits -- string ) — JS Number.toFixed. NULL num
+    /// is NULL; a NON-NUMERIC num is an ERROR (ts throws TypeError here,
+    /// unlike SQRT/CLAMP); digits outside 0..=100 is an error (ts
+    /// RangeError); NULL digits means 0; NaN/Infinity format as "NaN" /
+    /// "Infinity". ts's >=1e21 exponential-notation quirk is NOT
+    /// reproduced — large values format in plain decimal (documented).
+    fn word_format_fixed(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let digits_val = context.stack_pop()?;
+        let num_val = context.stack_pop()?;
+
+        if matches!(num_val, ForthicValue::Null) {
+            context.stack_push(ForthicValue::Null);
+            return Ok(());
+        }
+        let Some(num) = Self::to_number(&num_val) else {
+            return Err(ForthicError::InvalidOperation {
+                forthic: String::new(),
+                message: "FORMAT-FIXED requires a number".to_string(),
+                location: None,
+                cause: None,
+            });
+        };
+        let digits = match &digits_val {
+            ForthicValue::Null => 0,
+            other => match Self::to_number(other) {
+                Some(d) => d.trunc() as i64,
+                None => {
+                    return Err(ForthicError::InvalidOperation {
+                        forthic: String::new(),
+                        message: "FORMAT-FIXED digits must be a number".to_string(),
+                        location: None,
+                        cause: None,
+                    })
+                }
+            },
+        };
+        if !(0..=100).contains(&digits) {
+            return Err(ForthicError::InvalidOperation {
+                forthic: String::new(),
+                message: format!("FORMAT-FIXED digits must be between 0 and 100, got {digits}"),
+                location: None,
+                cause: None,
+            });
+        }
+
+        context.stack_push(ForthicValue::String(Self::to_fixed(num, digits as usize)));
+        Ok(())
+    }
+
+    /// JS toFixed rounds ties half-AWAY-from-zero ((0.5).toFixed(0) is
+    /// "1"); Rust's format! rounds ties-to-even ("0"). Scale + f64::round
+    /// (which IS half-away-from-zero) first, then format. Binary-inexact
+    /// "ties" like 1.005 come out identically either way.
+    fn to_fixed(num: f64, digits: usize) -> String {
+        if num.is_nan() {
+            return "NaN".to_string();
+        }
+        if num.is_infinite() {
+            return if num > 0.0 { "Infinity" } else { "-Infinity" }.to_string();
+        }
+        let factor = 10f64.powi(digits as i32);
+        let rounded = (num * factor).round() / factor;
+        format!("{rounded:.digits$}")
+    }
+
     // ===== Helper Functions =====
 
     /// Convert ForthicValue to number (f64)
@@ -455,7 +602,10 @@ impl MathModule {
 
     /// Convert number to appropriate ForthicValue (Int or Float)
     fn number_to_value(num: f64) -> ForthicValue {
-        if num.fract() == 0.0 && num.is_finite() {
+        // Collapse to Int only within the f64-exact integer range (2^53) —
+        // beyond it `as i64` silently saturates (e.g. [1e18 100] PRODUCT)
+        const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_992.0;
+        if num.fract() == 0.0 && num.is_finite() && num.abs() <= MAX_SAFE_INTEGER {
             ForthicValue::Int(num as i64)
         } else {
             ForthicValue::Float(num)

@@ -303,14 +303,16 @@ fn test_add_negative_days() {
 }
 
 #[test]
-fn test_subtract_dates() {
+fn test_days_between() {
+    // Classic SUBTRACT-DATES dropped in Batch 5; DAYS-BETWEEN is the same
+    // handler (same operand order, same sign)
     let module = DateTimeModule::new();
     let mut ctx = MockContext::new();
 
     let date1 = NaiveDate::from_ymd_opt(2024, 1, 22).unwrap();
     let date2 = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
 
-    let word = module.module().find_word("SUBTRACT-DATES").unwrap();
+    let word = module.module().find_word("DAYS-BETWEEN").unwrap();
     ctx.stack.push(ForthicValue::Date(date1));
     ctx.stack.push(ForthicValue::Date(date2));
     word.execute(&mut ctx).unwrap();
@@ -319,14 +321,14 @@ fn test_subtract_dates() {
 }
 
 #[test]
-fn test_subtract_dates_negative() {
+fn test_days_between_negative() {
     let module = DateTimeModule::new();
     let mut ctx = MockContext::new();
 
     let date1 = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
     let date2 = NaiveDate::from_ymd_opt(2024, 1, 22).unwrap();
 
-    let word = module.module().find_word("SUBTRACT-DATES").unwrap();
+    let word = module.module().find_word("DAYS-BETWEEN").unwrap();
     ctx.stack.push(ForthicValue::Date(date1));
     ctx.stack.push(ForthicValue::Date(date2));
     word.execute(&mut ctx).unwrap();

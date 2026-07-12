@@ -86,7 +86,74 @@ impl CoreModule {
         register_words!(module, {
             "INTERPOLATE" => Self::word_interpolate,
             "PRINT" => Self::word_print,
+            "USE-MODULES" => Self::word_use_modules,
         });
+    }
+
+    /// USE-MODULES: ( names [options] -- ) — import registered modules
+    /// into the app module. Each entry is either a name string or a
+    /// `[name prefix]` pair. `[.prefixed TRUE] ~>` prefixes plain names
+    /// with themselves; an explicit pair prefix ALWAYS wins over the
+    /// option (ts contract). NULL names is a no-op; an unregistered name
+    /// errors with UnknownModule.
+    fn word_use_modules(context: &mut dyn InterpreterContext) -> Result<(), ForthicError> {
+        let options = Self::pop_word_options(context);
+        let prefixed = options
+            .as_ref()
+            .and_then(|o| o.get_bool("prefixed"))
+            .unwrap_or(false);
+        let names = context.stack_pop()?;
+        let entries = match names {
+            ForthicValue::Array(entries) => entries,
+            ForthicValue::Null => return Ok(()),
+            other => {
+                return Err(ForthicError::InvalidOperation {
+                    forthic: String::new(),
+                    message: format!("USE-MODULES requires an array of names, got {other:?}"),
+                    location: None,
+                    cause: None,
+                })
+            }
+        };
+        for entry in entries {
+            let (name, prefix) = match entry {
+                ForthicValue::String(name) => {
+                    let prefix = if prefixed {
+                        name.clone()
+                    } else {
+                        String::new()
+                    };
+                    (name, prefix)
+                }
+                ForthicValue::Array(pair) => match (pair.first(), pair.get(1)) {
+                    (Some(ForthicValue::String(n)), Some(ForthicValue::String(p)))
+                        if pair.len() == 2 =>
+                    {
+                        (n.clone(), p.clone())
+                    }
+                    _ => {
+                        return Err(ForthicError::InvalidOperation {
+                            forthic: String::new(),
+                            message: "USE-MODULES entries must be 'name' or ['name' 'prefix']"
+                                .to_string(),
+                            location: None,
+                            cause: None,
+                        })
+                    }
+                },
+                _ => {
+                    return Err(ForthicError::InvalidOperation {
+                        forthic: String::new(),
+                        message: "USE-MODULES entries must be 'name' or ['name' 'prefix']"
+                            .to_string(),
+                        location: None,
+                        cause: None,
+                    })
+                }
+            };
+            context.use_module(&name, &prefix)?;
+        }
+        Ok(())
     }
 
     /// Pop a WordOptions value if one sits on top of the stack
