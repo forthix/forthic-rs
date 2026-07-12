@@ -1,5 +1,14 @@
 # Word Inventory: forthic-ts vs forthic-rs (2026-07-11)
 
+**STATUS: PORT COMPLETE (2026-07-12).** Batches 0-5 all merged (PRs #11,
+#12, #9, #10, #13, #14, #15, #16). Classic words with canonical
+replacements were dropped (tombstone-tested), the 9 no-replacement
+classics kept, and the interpolation contract redesigned along the way
+(${name} holes — see Batch 4). What remains is the Present-but-verify
+list at the bottom and plans/TS-PARITY-BACKLOG.md.
+
+Original audit below, kept for the record:
+
 Full audit of both standard libraries. ts canonical = 169 unique words
 (8 modules) + 34 classic words; rs = 106 unique words. Missing from rs
 (canonical, portable): ~75 words. Word-name extraction verified against the
