@@ -6,6 +6,9 @@ authors = ["Forthic Contributors"]
 description = "A stack-based, concatenative language for composable transformations"
 license = "MIT"
 repository = "https://github.com/forthic/forthic-rs"
+readme = "README.md"
+keywords = ["forthic", "stack-based", "concatenative", "interpreter", "dsl"]
+categories = ["parser-implementations", "compilers"]
 
 [dependencies]
 # Error handling
